@@ -1,0 +1,11 @@
+{
+  "name": "bharti-clinic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bharti Clinic patient, doctor and administrator portal",
+  "scripts": {
+    "build": "node scripts/write-config.js",
+    "start": "npm run build && node scripts/serve.js",
+    "test": "node --test"
+  }
+}
