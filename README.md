@@ -71,6 +71,12 @@ Import the project in Vercel and add `SUPABASE_URL` and `SUPABASE_ANON_KEY` as p
 
 The generated `config.js` contains only the public anon key. Never put a Supabase service-role key in `.env` for the browser build or in any `VITE_`, `NEXT_PUBLIC_`, or client-side variable.
 
+## 4. Deploy to Render
+
+This repository includes a Render Blueprint for a static site. In Render, choose **New → Blueprint**, select this GitHub repository, and deploy the `main` branch. The build packages only the public HTML, CSS, and browser JavaScript into `dist/`; it does not publish `.env`, the admin password reset helper, or Supabase service-role credentials. The browser `config.js` uses the public Supabase anon key already in the repository.
+
+After Render creates the public site URL, add that URL and its `/reset-password.html` path to Supabase **Authentication → URL Configuration → Redirect URLs**. The `manage-doctor` Supabase Edge Function is deployed separately from the Render static site.
+
 ## Roles and data access
 
 - A new user created through the site is always a patient. Their Supabase Auth UUID is their unique patient ID.

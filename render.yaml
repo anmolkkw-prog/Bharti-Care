@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: bharti-care-connect
+    runtime: static
+    branch: main
+    buildCommand: npm run build:render
+    staticPublishPath: dist
