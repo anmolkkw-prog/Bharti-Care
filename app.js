@@ -13,11 +13,21 @@
   const message = (el, text, success = false) => { if (!el) return; el.textContent = text || ''; el.classList.toggle('success', success); };
   const toast = (text, error = false) => { const el = $('#toast'); if (!el) return; el.textContent = text; el.classList.toggle('error', error); el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 3600); };
   const errorText = error => error?.message || 'Something went wrong. Please try again.';
-  const functionErrorText = (error, functionName) => {
+  const functionErrorText = async (error, functionName) => {
     const detail = errorText(error);
     if (error?.name === 'FunctionsFetchError' || /failed to send a request to the edge function/i.test(detail)) {
       const project = cfg.url ? ` for ${cfg.url.replace(/^https?:\/\//, '')}` : '';
       return `Could not reach the ${functionName} Edge Function${project}. Deploy it with “supabase functions deploy ${functionName}” and check the browser Network panel for network or CORS errors.`;
+    }
+    const response = error?.context;
+    if (response && typeof response.clone === 'function') {
+      let serverMessage = '';
+      try {
+        const body = await response.clone().json();
+        serverMessage = body?.error || body?.message || '';
+      } catch {}
+      if (serverMessage) return `${serverMessage} (HTTP ${response.status})`;
+      if (response.status) return `${detail} (HTTP ${response.status})`;
     }
     return detail;
   };
@@ -62,7 +72,7 @@
     const feedbackData = Array.isArray(row.feedback) ? row.feedback[0] : row.feedback;
     const feedback = feedbackData ? `<p><strong>Patient feedback${feedbackData.rating ? ` · ${esc(feedbackData.rating)}/5` : ''}:</strong> ${esc(feedbackData.message || '')}</p>` : '';
     const note = row.visit_summary ? `<p><strong>Visit summary:</strong> ${esc(row.visit_summary)}</p>` : '';
-    return `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">${esc(row.visit_type || 'Appointment')}</span><h3>${options.patient ? esc(row.doctor_name || 'Dr. Bharti') : esc(profileName(patient))}</h3><p>${esc(formatDate(row.appointment_date))} · ${esc(formatTime(row.appointment_time))}</p>${idLabel}</div>${patientLabel}<div><p>${esc(row.comment || 'No additional notes')}</p></div><div>${statusBadge(row.status)}</div>${buttons}</div>${note}${feedback}</article>`;
+    return `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">${esc(row.visit_type || 'Appointment')}</span><h3>${options.patient ? esc(row.doctor_name || 'Dr. Bharati Pujari') : esc(profileName(patient))}</h3><p>${esc(formatDate(row.appointment_date))} · ${esc(formatTime(row.appointment_time))}</p>${idLabel}</div>${patientLabel}<div><p>${esc(row.comment || 'No additional notes')}</p></div><div>${statusBadge(row.status)}</div>${buttons}</div>${note}${feedback}</article>`;
   }
 
   async function initLanding() {
@@ -85,6 +95,18 @@
       message($('#auth-message'), '');
     };
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
+    $('#forgot-password').addEventListener('click', async () => {
+      const emailValue = email.value.trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) return message($('#auth-message'), 'Enter the doctor’s account email first.');
+      const button = $('#forgot-password'); button.disabled = true;
+      message($('#auth-message'), 'Sending a password reset link…');
+      try {
+        const { error } = await client.auth.resetPasswordForEmail(emailValue, { redirectTo: `${location.origin}/reset-password.html` });
+        if (error) throw error;
+        message($('#auth-message'), 'If an account exists for this email, a reset link has been sent. Check the inbox and spam folder.', true);
+      } catch (error) { message($('#auth-message'), errorText(error)); }
+      finally { button.disabled = false; }
+    });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (!client) return message($('#auth-message'), 'Add your Supabase URL and anon key in .env, then run npm run build.');
@@ -135,13 +157,41 @@
     if (PAGE === 'admin') { setTabs(); bindAdmin(); await loadAdminOverview(); }
   }
 
+  async function initPasswordRecovery() {
+    const form = $('#password-recovery-form');
+    const status = $('#password-recovery-message');
+    if (!client) return message(status, 'Password reset is unavailable until Supabase is configured.');
+    const { data: { session } = {}, error } = await client.auth.getSession();
+    if (error) return message(status, errorText(error));
+    if (!session) return message(status, 'This reset link is invalid or expired. Request a new password reset email.');
+    form.hidden = false;
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const password = form.elements.password.value;
+      const confirm = form.elements.confirm_password.value;
+      if (password.length < 12) return message(status, 'Use at least 12 characters for the new password.');
+      if (password !== confirm) return message(status, 'The passwords do not match.');
+      const submit = $('#password-recovery-submit'); submit.disabled = true;
+      message(status, 'Updating password…');
+      try {
+        const { error: updateError } = await client.auth.updateUser({ password });
+        if (updateError) throw updateError;
+        await client.auth.signOut();
+        form.hidden = true;
+        status.innerHTML = 'Password updated. <a href="/">Return to sign in</a>.';
+        status.classList.add('success');
+      } catch (updateError) { message(status, errorText(updateError)); }
+      finally { submit.disabled = false; }
+    });
+  }
+
   async function loadPatientAppointments() {
     const { data, error } = await client.from('appointments').select('*, doctor:profiles!appointments_doctor_id_fkey(full_name), feedback(rating,message)').order('appointment_date', { ascending: true }).order('appointment_time', { ascending: true });
     if (error) { showEmpty('#patient-appointments', errorText(error)); return; }
     const future = (data || []).filter(a => a.appointment_date >= localDate() && !['cancelled', 'completed'].includes(a.status));
     $('#upcoming-count').textContent = future.length;
-    $('#patient-upcoming').innerHTML = future.length ? future.slice(0, 3).map(a => appointmentCard({ ...a, doctor_name: a.doctor?.full_name }, { patient: true })).join('') : '<div class="empty-state">No upcoming visits. When you are ready, book a visit with Dr. Bharti.</div>';
-    $('#patient-appointments').innerHTML = data?.length ? data.map(a => appointmentCard({ ...a, doctor_name: a.doctor?.full_name }, { patient: true })).join('') : '<div class="empty-state">No appointments yet. Book your first visit whenever you are ready.</div>';
+    $('#patient-upcoming').innerHTML = future.length ? future.slice(0, 3).map(a => appointmentCard({ ...a, doctor_name: a.doctor?.full_name }, { patient: true })).join('') : '<div class="empty-state">No upcoming visits. You can request an appointment below.</div>';
+    $('#patient-appointments').innerHTML = data?.length ? data.map(a => appointmentCard({ ...a, doctor_name: a.doctor?.full_name }, { patient: true })).join('') : '<div class="empty-state">No appointments yet. Send a request below to get started.</div>';
     bindAppointmentActions();
   }
   async function loadHealth() {
@@ -156,28 +206,40 @@
     $(target).innerHTML = data?.length ? data.map(p => `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">PRESCRIPTION · ${esc(formatDate(p.created_at.slice(0, 10)))}</span><h3>${view === 'patient' ? `From ${esc(p.doctor?.full_name || 'your doctor')}` : esc(p.patient?.full_name || p.patient?.email || 'Patient')}</h3></div><div><p>${esc(p.medication)}</p><p>${esc(p.instructions || '')}</p></div><div><p>Appointment: ${esc(p.appointment_id || '—')}</p></div></div></article>`).join('') : '<div class="empty-state">Prescriptions shared by your care team will appear here.</div>';
   }
   function bindPatient() {
-    $$('[data-open-booking]').forEach(b => b.addEventListener('click', () => { activatePanel('appointments'); $('#booking-card').classList.remove('hidden'); $('#booking-card').scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
-    $('[data-close-booking]').addEventListener('click', () => $('#booking-card').classList.add('hidden'));
-    const form = $('#booking-form'), date = form.elements.date, time = form.elements.time;
-    date.min = localDate();
-    date.value = localDate();
-    date.addEventListener('change', async () => {
-      time.innerHTML = '<option value="">Loading times…</option>';
-      if (!date.value || date.value < localDate()) { time.innerHTML = '<option value="">Choose a future date</option>'; return; }
-      const { data, error } = await client.rpc('available_appointment_slots', { p_date: date.value });
-      if (error) { time.innerHTML = '<option value="">Could not load times</option>'; return message($('#booking-message'), errorText(error)); }
-      const times = data || [];
-      time.innerHTML = times.length ? '<option value="">Select a time</option>' + times.map(s => `<option value="${esc(s.slot_time)}">${esc(formatTime(s.slot_time))}${s.remaining < 10 ? ` · ${s.remaining} left` : ''}</option>`).join('') : '<option value="">No appointment times available</option>';
-      message($('#booking-message'), times.length ? '' : 'No times are available on this date. Try another future date; if no dates show times, ask the clinic to check that a doctor is active.');
-    });
-    form.addEventListener('submit', async e => {
-      e.preventDefault(); message($('#booking-message'), '');
-      if (date.value < localDate()) return message($('#booking-message'), 'Please select a future date.');
-      const submit = form.querySelector('button[type="submit"]'); submit.disabled = true;
-      const { error } = await client.rpc('book_appointment', { p_date: date.value, p_time: time.value, p_visit_type: form.elements.visit_type.value, p_comment: form.elements.comment.value.trim() || null });
-      submit.disabled = false;
-      if (error) { message($('#booking-message'), errorText(error)); if (error.message.includes('fully booked')) date.dispatchEvent(new Event('change')); return; }
-      form.reset(); time.innerHTML = '<option value="">Select a date first</option>'; message($('#booking-message'), 'Appointment request sent. It is pending clinic confirmation.', true); toast('Appointment request sent.'); await loadPatientAppointments();
+    const requestForm = $('#appointment-request-form');
+    const requestDate = $('#request-date');
+    requestDate.min = localDate();
+    requestDate.addEventListener('change', loadAvailableSlots);
+    requestForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = $('#appointment-request-submit');
+      const date = form.elements.appointment_date.value;
+      const time = form.elements.appointment_time.value;
+      const visitType = form.elements.visit_type.value;
+      if (!date || !time || !visitType) return message($('#appointment-request-message'), 'Choose a date, an available time, and a visit type.');
+      submit.disabled = true;
+      message($('#appointment-request-message'), 'Sending your request…');
+      try {
+        const phone = form.elements.contact_phone.value.trim();
+        if (!logic.isValidPhone(phone) || !phone) throw new Error('Enter a valid phone number for the clinic to confirm your request.');
+        const note = form.elements.comment.value.trim();
+        const { error } = await client.rpc('book_appointment', {
+          p_date: date, p_time: time, p_visit_type: visitType,
+          p_comment: [`Call back: ${phone}`, note].filter(Boolean).join('\n\n'),
+        });
+        if (error) throw error;
+        message($('#appointment-request-message'), 'Request sent. The clinic will contact you to confirm the appointment.', true);
+        toast('Appointment request sent.');
+        form.reset();
+        requestDate.min = localDate();
+        $('#request-time').innerHTML = '<option value="">Choose a date first</option>';
+        $('#request-time').disabled = true;
+        await loadPatientAppointments();
+      } catch (error) {
+        message($('#appointment-request-message'), errorText(error));
+        await loadAvailableSlots();
+      } finally { submit.disabled = false; }
     });
     $('#health-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget;
@@ -188,7 +250,25 @@
       const { error } = await client.from('health_profiles').upsert(payload, { onConflict: 'patient_id' });
       message($('#health-message'), error ? errorText(error) : 'Health profile saved.', !error); if (!error) toast('Health profile saved.');
     });
-    date.dispatchEvent(new Event('change'));
+  }
+  async function loadAvailableSlots() {
+    const form = $('#appointment-request-form');
+    const date = form?.elements.appointment_date.value;
+    const select = $('#request-time');
+    if (!date || !select) return;
+    select.disabled = true;
+    select.innerHTML = '<option value="">Checking times…</option>';
+    const { data, error } = await client.rpc('available_appointment_slots', { p_date: date });
+    if (error) {
+      select.innerHTML = '<option value="">Could not load times</option>';
+      return message($('#appointment-request-message'), errorText(error));
+    }
+    const slots = (data || []).filter(slot => Number(slot.remaining) > 0);
+    select.innerHTML = slots.length
+      ? '<option value="">Choose a time</option>' + slots.map(slot => `<option value="${esc(slot.slot_time.slice(0, 5))}">${esc(formatTime(slot.slot_time))}</option>`).join('')
+      : '<option value="">No times available on this date</option>';
+    select.disabled = !slots.length;
+    message($('#appointment-request-message'), slots.length ? '' : 'No online request times are available for this date. Please choose another date or call the clinic.');
   }
   function bindAppointmentActions() {
     $$('[data-feedback]').forEach(button => button.addEventListener('click', () => {
@@ -297,13 +377,18 @@
   async function loadAdminTeam() {
     const { data, error } = await client.from('profiles').select('id,full_name,email,is_active,staff_details(qualification,specialty)').eq('role', 'doctor').order('full_name');
     if (error) return showEmpty('#admin-team', errorText(error));
-    $('#admin-team').innerHTML = data?.length ? data.map(d => `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">DOCTOR · ${esc(d.id.slice(0, 8))}</span><h3>${esc(d.full_name || 'Doctor')}</h3><p>${esc(d.email || '')}</p></div><div><p>${esc(d.staff_details?.[0]?.qualification || '—')}</p><p>${esc(d.staff_details?.[0]?.specialty || 'General Practitioner')}</p></div><div>${d.is_active ? '<span class="badge confirmed">Active</span>' : '<span class="badge cancelled">Inactive</span>'}</div><div class="data-actions"><button class="small-button ${d.is_active ? 'danger' : ''}" data-staff-toggle="${esc(d.id)}" data-active="${d.is_active}">${d.is_active ? 'Deactivate' : 'Reactivate'}</button></div></div></article>`).join('') : '<div class="empty-state">No doctors yet. Add your first doctor account.</div>';
+    $('#admin-team').innerHTML = data?.length ? data.map(d => `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">DOCTOR · ${esc(d.id.slice(0, 8))}</span><h3>${esc(d.full_name || 'Doctor')}</h3><p>${esc(d.email || '')}</p></div><div><p>${esc(d.staff_details?.[0]?.qualification || '—')}</p><p>${esc(d.staff_details?.[0]?.specialty || 'Obstetrics & Gynecology')}</p></div><div>${d.is_active ? '<span class="badge confirmed">Active</span>' : '<span class="badge cancelled">Inactive</span>'}</div><div class="data-actions"><button class="small-button" data-staff-reset="${esc(d.id)}" data-staff-name="${esc(d.full_name || 'Doctor')}">Reset password</button><button class="small-button ${d.is_active ? 'danger' : ''}" data-staff-toggle="${esc(d.id)}" data-active="${d.is_active}">${d.is_active ? 'Deactivate' : 'Reactivate'}</button></div></div></article>`).join('') : '<div class="empty-state">No doctors yet. Add your first doctor account.</div>';
+    $$('[data-staff-reset]').forEach(button => button.addEventListener('click', () => {
+      const form = $('#staff-password-form'); form.reset(); form.dataset.userId = button.dataset.staffReset;
+      $('#staff-password-doctor').textContent = `Set a new login password for ${button.dataset.staffName}.`;
+      message($('#staff-password-message'), ''); $('#staff-password-dialog').showModal();
+    }));
     $$('[data-staff-toggle]').forEach(b => b.addEventListener('click', async () => {
       b.disabled = true; const active = b.dataset.active === 'true';
       try {
         const { error: updateError } = await client.functions.invoke('manage-doctor', { body: { action: active ? 'deactivate' : 'reactivate', userId: b.dataset.staffToggle } });
-        if (updateError) toast(functionErrorText(updateError, 'manage-doctor'), true); else { toast(active ? 'Doctor deactivated.' : 'Doctor reactivated.'); await loadAdminTeam(); }
-      } catch (error) { toast(functionErrorText(error, 'manage-doctor'), true); }
+        if (updateError) toast(await functionErrorText(updateError, 'manage-doctor'), true); else { toast(active ? 'Doctor deactivated.' : 'Doctor reactivated.'); await loadAdminTeam(); }
+      } catch (error) { toast(await functionErrorText(error, 'manage-doctor'), true); }
       finally { b.disabled = false; }
     }));
   }
@@ -311,6 +396,19 @@
     $('#admin-date-filter').addEventListener('change', loadAdminAppointments); $('#admin-status-filter').addEventListener('change', loadAdminAppointments);
     $('#admin-patient-search').addEventListener('input', e => filterCards('#admin-patients', e.target.value));
     $('[data-open-staff]').addEventListener('click', () => $('#staff-card').classList.remove('hidden')); $('[data-close-staff]').addEventListener('click', () => $('#staff-card').classList.add('hidden'));
+    $$('[data-password-dialog-close]').forEach(button => button.addEventListener('click', () => $('#staff-password-dialog').close()));
+    $('#staff-password-form').addEventListener('submit', async e => {
+      e.preventDefault(); const form = e.currentTarget, password = form.elements.password.value;
+      if (password.length < 12) return message($('#staff-password-message'), 'Use at least 12 characters for the new password.');
+      if (password !== form.elements.confirm_password.value) return message($('#staff-password-message'), 'The passwords do not match.');
+      const submit = form.querySelector('button[type="submit"]'); submit.disabled = true;
+      try {
+        const { error } = await client.functions.invoke('manage-doctor', { body: { action: 'reset-password', userId: form.dataset.userId, password } });
+        if (error) return message($('#staff-password-message'), await functionErrorText(error, 'manage-doctor'));
+        $('#staff-password-dialog').close(); form.reset(); toast('Doctor password updated. Share the new password securely.');
+      } catch (error) { message($('#staff-password-message'), await functionErrorText(error, 'manage-doctor')); }
+      finally { submit.disabled = false; }
+    });
     $('#staff-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget, payload = Object.fromEntries(new FormData(f));
       if (!isValidName(payload.name)) return message($('#staff-message'), 'Please enter a valid name.');
@@ -318,9 +416,9 @@
       const submit = f.querySelector('button[type="submit"]'); submit.disabled = true;
       try {
         const { error } = await client.functions.invoke('manage-doctor', { body: { action: 'create', ...payload } });
-        if (error) return message($('#staff-message'), functionErrorText(error, 'manage-doctor'));
+        if (error) return message($('#staff-message'), await functionErrorText(error, 'manage-doctor'));
         message($('#staff-message'), 'Doctor account created.', true); toast('Doctor account created.'); f.reset(); await loadAdminTeam();
-      } catch (error) { message($('#staff-message'), functionErrorText(error, 'manage-doctor')); }
+      } catch (error) { message($('#staff-message'), await functionErrorText(error, 'manage-doctor')); }
       finally { submit.disabled = false; }
     });
   }
@@ -330,5 +428,7 @@
     if (error) toast(errorText(error), true); else { toast(`Appointment ${status}.`); await loadAdminAppointments(); await loadAdminOverview(); }
   }
 
-  if (PAGE === 'landing') initLanding(); else initPortal().then(() => { if (PAGE === 'doctor') bindDoctorForm(); }).catch(error => toast(errorText(error), true));
+  if (PAGE === 'landing') initLanding();
+  else if (PAGE === 'reset-password') initPasswordRecovery();
+  else initPortal().then(() => { if (PAGE === 'doctor') bindDoctorForm(); }).catch(error => toast(errorText(error), true));
 })();

@@ -1,20 +1,22 @@
-# Bharti Clinic
+# Dr. Bharati Pujari’s Clinic
 
-A responsive, static website for Bharti Clinic with separate patient, doctor, and administrator portals. The frontend is plain HTML, CSS, and JavaScript; Supabase provides authentication, database access, row-level security, and a small Edge Function for doctor account management. It deploys as a static site to Vercel.
+A responsive, static website for Dr. Bharati Pujari’s Clinic in Dharwad with separate patient, doctor, and administrator portals. The frontend is plain HTML, CSS, and JavaScript; Supabase provides authentication, database access, row-level security, and a small Edge Function for doctor account management. It deploys as a static site to Vercel.
 
 ## Included
 
-- Patient registration and sign-in, unique Supabase user IDs, profile and health history, appointment requests, prescriptions, and post-visit feedback.
+- Patient registration and sign-in, unique Supabase user IDs, profile and health history, appointment history, prescriptions, and post-visit feedback. Patients can send a preferred appointment date and time request in the portal; the clinic confirms by phone. Patients can also book by phone.
 - Doctor sign-in, appointment confirmation, patient details and medical history, visit summaries, and prescriptions.
 - Admin sign-in, clinic-wide appointment and patient views, doctor creation, deactivation, and reactivation.
-- Appointment times from 10:00 to 22:00 with the 14:00–15:00 and 17:00–18:00 breaks. The database caps each one-hour slot at 10 active (pending or confirmed) appointments and serializes simultaneous bookings.
-- Appointment consultation fee displayed as ₹100. The app does not collect online payment.
+- Admins can reset an existing doctor password from Care team without using that doctor's email inbox; the reset uses a 12-character minimum.
+- The patient portal supports appointment requests, appointment history, and phone booking. Online requests remain pending until the clinic confirms them.
+- Sign-in includes an email password recovery flow with a dedicated reset page. Add the deployed and local `/reset-password.html` URLs to Supabase Auth's allowed redirect URLs.
+- The landing page reflects the clinic’s Google listing. The clinic profile includes the details supplied for this project. Patients can request a visit online from the patient portal or call the clinic; all web requests require confirmation by the clinic.
 - Supabase row-level security, input validation in the UI and database, and a `.gitignore` for environment files and build/dependency artifacts.
 
 ## 1. Set up Supabase
 
 1. Create a Supabase project. In **Project Settings → API**, copy the project URL and the **anon/public** key.
-2. Open **SQL Editor**, paste all of [`supabase/schema.sql`](supabase/schema.sql), and run it. This creates the profile trigger, data tables, role policies, and the protected booking functions.
+2. Open **SQL Editor**, paste all of [`supabase/schema.sql`](supabase/schema.sql), and run it. Re-run this updated schema on an existing project to apply the appointment request hours. This creates the profile trigger, data tables, role policies, and the protected booking functions.
 3. Create your first administrator from **Authentication → Users → Add user**. Confirm the email. Then run these two statements in SQL Editor, substituting the email you just created:
 
    ```sql
@@ -27,7 +29,7 @@ A responsive, static website for Bharti Clinic with separate patient, doctor, an
    ```
 
    Admin and doctor accounts cannot be created through public registration. The admin creates doctor accounts from the Care team portal.
-4. In **Authentication → URL Configuration**, set your local and deployed site URLs (for example `http://localhost:4173` and your Vercel URL) in the allowed redirect URLs.
+4. In **Authentication → URL Configuration**, set your local and deployed site URLs (for example `http://localhost:4173` and your Vercel URL) in the allowed redirect URLs. Also add the password reset pages, such as `http://localhost:4173/reset-password.html` and `https://YOUR-VERCEL-DOMAIN/reset-password.html`.
 5. Deploy the doctor-management Edge Function from this project root with the Supabase CLI:
 
    ```sh
@@ -74,7 +76,7 @@ The generated `config.js` contains only the public anon key. Never put a Supabas
 - A new user created through the site is always a patient. Their Supabase Auth UUID is their unique patient ID.
 - Doctor and admin roles are assigned only through Supabase's trusted app metadata and the initial admin setup above.
 - Patients can read their own appointments, profile, prescriptions, and health history. Doctors can read their assigned appointments and patient health details. Admins can read clinic data and manage doctor accounts.
-- Appointment booking is handled by a database function rather than direct browser inserts. It checks the clinic time slots and hourly capacity inside a transaction.
+- Patients can request a preferred date and time from the authenticated portal; requests are pending until staff confirm them. Phone booking remains available.
 - New appointment requests appear in the doctor's portal through Supabase Realtime.
 - Deactivating a doctor blocks sign-in and protected database access; it preserves their records for the clinic's appointment history.
 
@@ -83,6 +85,7 @@ The generated `config.js` contains only the public anon key. Never put a Supabas
 ```text
 index.html                  Clinic landing page and patient/staff sign-in
 patient.html                Patient dashboard
+reset-password.html         Password recovery page
 doctor.html                 Doctor dashboard
 admin.html                  Administrator dashboard
 app.js / logic.js           Shared behavior and tested validation helpers

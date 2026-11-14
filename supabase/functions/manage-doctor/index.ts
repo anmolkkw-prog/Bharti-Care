@@ -35,6 +35,16 @@ Deno.serve(async (req) => {
     if (detailError) { await admin.auth.admin.deleteUser(data.user.id); return respond({ error: 'Doctor account setup failed. ' + detailError.message }, 500); }
     return respond({ id: data.user.id, email, name });
   }
+  if (body.action === 'reset-password') {
+    const id = body.userId, password = body.password || '';
+    if (!id) return respond({ error: 'Choose a doctor account.' }, 400);
+    if (password.length < 12) return respond({ error: 'New password must be at least 12 characters.' }, 400);
+    const { data: target, error: targetError } = await admin.from('profiles').select('role').eq('id', id).single();
+    if (targetError || target?.role !== 'doctor') return respond({ error: 'Doctor account not found.' }, 404);
+    const { error: passwordError } = await admin.auth.admin.updateUserById(id, { password });
+    if (passwordError) return respond({ error: passwordError.message }, 400);
+    return respond({ id, password_updated: true });
+  }
   if (body.action === 'deactivate' || body.action === 'reactivate') {
     const id = body.userId;
     if (!id || id === user.id) return respond({ error: 'Choose a different doctor account.' }, 400);

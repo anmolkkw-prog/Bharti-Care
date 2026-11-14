@@ -73,8 +73,13 @@ create table if not exists public.appointments (
   visit_summary text check (visit_summary is null or char_length(visit_summary) <= 2000),
   created_at timestamptz not null default now(),
   constraint appointment_slot check (
-    appointment_time = any(array['10:00','11:00','12:00','13:00','15:00','16:00','18:00','19:00','20:00','21:00']::time[])
+    appointment_time = any(array['09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00']::time[])
   )
+);
+-- Keep the table constraint compatible with prior appointment rows while allowing clinic hours.
+alter table public.appointments drop constraint if exists appointment_slot;
+alter table public.appointments add constraint appointment_slot check (
+  appointment_time = any(array['09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00']::time[])
 );
 create index if not exists appointments_date_time_idx on public.appointments(appointment_date, appointment_time, doctor_id);
 create index if not exists appointments_patient_idx on public.appointments(patient_id, appointment_date desc);
@@ -172,7 +177,11 @@ begin
   select p.id into d from public.profiles p where p.role = 'doctor' and p.is_active order by p.created_at limit 1;
   if d is null then raise exception 'No active doctor is available'; end if;
   return query select s.t, 10 - count(a.id)::integer
-    from unnest(array['10:00','11:00','12:00','13:00','15:00','16:00','18:00','19:00','20:00','21:00']::time[]) s(t)
+    from unnest(case
+      when extract(isodow from p_date)::integer = 6 then array['09:30','10:30','11:30','12:30']::time[]
+      when extract(isodow from p_date)::integer between 1 and 5 then array['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00']::time[]
+      else array[]::time[]
+    end) s(t)
     left join public.appointments a on a.doctor_id = d and a.appointment_date = p_date and a.appointment_time = s.t and a.status in ('pending','confirmed')
     where p_date >= (now() at time zone 'Asia/Kolkata')::date
       and (p_date > (now() at time zone 'Asia/Kolkata')::date or s.t > (now() at time zone 'Asia/Kolkata')::time)
@@ -187,7 +196,10 @@ declare patient uuid := auth.uid(); d uuid; appointment uuid; taken integer;
 begin
   if patient is null or public.current_role() <> 'patient' then raise exception 'Patient access required'; end if;
   if p_date < (now() at time zone 'Asia/Kolkata')::date or (p_date = (now() at time zone 'Asia/Kolkata')::date and p_time <= (now() at time zone 'Asia/Kolkata')::time) then raise exception 'Choose a future appointment time'; end if;
-  if not (p_time = any(array['10:00','11:00','12:00','13:00','15:00','16:00','18:00','19:00','20:00','21:00']::time[])) then raise exception 'That appointment time is unavailable'; end if;
+  if not (
+    (extract(isodow from p_date)::integer between 1 and 5 and p_time = any(array['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00']::time[]))
+    or (extract(isodow from p_date)::integer = 6 and p_time = any(array['09:30','10:30','11:30','12:30']::time[]))
+  ) then raise exception 'That appointment time is unavailable'; end if;
   if p_visit_type is null or char_length(trim(p_visit_type)) not between 1 and 100 then raise exception 'Choose a visit type'; end if;
   if p_comment is not null and char_length(p_comment) > 1000 then raise exception 'Description is too long'; end if;
   select p.id into d from public.profiles p where p.role = 'doctor' and p.is_active order by p.created_at limit 1;
