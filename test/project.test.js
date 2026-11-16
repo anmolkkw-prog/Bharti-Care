@@ -26,3 +26,14 @@ test('service role key is not included in browser assets', () => {
     const source = fs.readFileSync(path.join(root, 'src', 'assets', 'js', file), 'utf8'); assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);
   }
 });
+
+test('patient sign-up collects and verifies a six-digit email OTP', () => {
+  const page = fs.readFileSync(path.join(root, 'src', 'pages', 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  const supabaseConfig = fs.readFileSync(path.join(root, 'supabase', 'config.toml'), 'utf8');
+  assert.match(page, /id="signup-otp"[^>]*inputmode="numeric"[^>]*maxlength="6"/);
+  assert.match(page, /id="resend-otp"/);
+  assert.match(app, /auth\.verifyOtp\(\{ email: verificationEmail, token, type: 'signup' \}\)/);
+  assert.match(app, /auth\.resend\(\{ type: 'signup', email: verificationEmail \}\)/);
+  assert.match(supabaseConfig, /\[auth\.email\][\s\S]*?enable_confirmations = true/);
+});
