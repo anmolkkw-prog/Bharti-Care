@@ -9,6 +9,7 @@ src/
 scripts/                  Build, local server, and admin utilities
 supabase/
   functions/              Supabase Edge Functions
+  public-config.json      Public project URL and browser publishable key
   schema.sql              Database tables, policies, triggers, and functions
   config.toml             Local Supabase Auth and database settings
 test/                     Local automated checks
@@ -16,7 +17,7 @@ docs/                     Setup, deployment, and architecture notes
 dist/                     Generated static site; do not edit or commit
 ```
 
-The build copies `src/pages/` to the root of `dist/`, and `src/assets/` to `dist/assets/`. This keeps existing deployed URLs such as `/patient.html` and `/reset-password.html` stable. `config.js` is generated into `dist/` from environment variables at build time and is not a source file.
+The build copies `src/pages/` to the root of `dist/`, and `src/assets/` to `dist/assets/`. This keeps existing deployed URLs such as `/patient.html` and `/reset-password.html` stable. `config.js` is generated into `dist/` from `supabase/public-config.json`, with environment variables as optional overrides. The browser publishable key is public by design; database passwords and secret/service-role keys must never be stored there.
 
 ## Where to make changes
 

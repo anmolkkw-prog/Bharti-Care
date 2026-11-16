@@ -5,10 +5,10 @@ A static clinic website and patient, doctor, and administrator portal for Dr. Bh
 ## Quick start
 
 1. Install Node.js 18 or newer.
-2. Copy `.env.example` to `.env` and add the Supabase project URL and public publishable/anon key.
+2. The public Supabase URL and publishable key are included in `supabase/public-config.json` for this clinic. Copy `.env.example` to `.env` only if you want local environment variables to override that project configuration.
 3. Run `npm start` and open [http://localhost:4173](http://localhost:4173).
 
-The build generates the public site in `dist/`. Only a Supabase public key belongs in the browser. Never put a service-role key in `.env` or frontend code.
+The build generates the public site in `dist/`. Only a Supabase publishable/anon key belongs in the browser. Never put a database password, secret key, or service-role key in `.env` or frontend code.
 
 ## Project guide
 
@@ -18,7 +18,7 @@ The build generates the public site in `dist/`. Only a Supabase public key belon
 
 ## Authentication
 
-Patient sign-up requires a six-digit email verification code. The deployed Supabase project must have **Confirm email** enabled, use the branded **Confirm signup** template with `{{ .Token }}` and no `{{ .ConfirmationURL }}` link, and have custom SMTP configured. Supabase's built-in sender is restricted to project team addresses and a low hourly limit. See the [deployment guide](docs/DEPLOYMENT.md) for setup and troubleshooting.
+Patient sign-up supports a six-digit email code and a secure verification link that signs the patient in. The deployed Supabase project must have **Confirm email** enabled and use the branded **Confirm signup** template from `supabase/templates/confirmation.html`, with no `{{ .ConfirmationURL }}` link. Configure custom SMTP for delivery to patient addresses. See the [deployment guide](docs/DEPLOYMENT.md) for setup and troubleshooting.
 
 ## Build commands
 

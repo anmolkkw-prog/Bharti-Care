@@ -226,6 +226,37 @@
     role.addEventListener('change', () => { if (role.value !== 'patient' && mode === 'signup') setMode('login'); });
   }
 
+  async function initEmailVerification() {
+    const status = $('#email-verification-message');
+    if (!client) return message(status, supabaseSetupMessage());
+    message(status, 'Verifying your email and signing you in…');
+    try {
+      const params = new URLSearchParams(location.search);
+      const tokenHash = params.get('token_hash');
+      const code = params.get('code');
+      let session = null;
+      if (tokenHash) {
+        if (params.get('type') !== 'email') throw new Error('This verification link is not valid for email confirmation.');
+        const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
+        if (error) throw error;
+        session = data.session;
+      } else if (code) {
+        const { data, error } = await client.auth.exchangeCodeForSession(code);
+        if (error) throw error;
+        session = data.session;
+      } else {
+        const { data, error } = await client.auth.getSession();
+        if (error) throw error;
+        session = data.session;
+      }
+      if (!session) throw new Error('This link is invalid or expired. Return to sign in and request a new verification email.');
+      message(status, 'Email verified. You are signed in. Opening your patient portal…', true);
+      setTimeout(() => location.replace('/patient.html'), 700);
+    } catch (error) {
+      message(status, `${errorText(error)} Return to sign in and request a new verification email.`);
+    }
+  }
+
   async function initPortal() {
     if (!client) { document.body.innerHTML = `<main class="app-main"><div class="empty-state">${esc(supabaseSetupMessage())}</div></main>`; return; }
     let auth;
@@ -511,5 +542,6 @@
 
   if (PAGE === 'landing') initLanding();
   else if (PAGE === 'reset-password') initPasswordRecovery();
+  else if (PAGE === 'email-verification') initEmailVerification();
   else initPortal().then(() => { if (PAGE === 'doctor') bindDoctorForm(); }).catch(error => toast(errorText(error), true));
 })();

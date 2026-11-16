@@ -12,13 +12,15 @@
           <tr><td style="padding:28px 32px 8px">
             <p style="margin:0;color:#456f59;font-size:12px;font-weight:bold;letter-spacing:1.4px;text-transform:uppercase">Bharti Care Connect</p>
             <h1 style="margin:22px 0 12px;font-size:24px;line-height:1.3">Verify your email address</h1>
-            <p style="margin:0;color:#5e6961;font-size:15px;line-height:1.7">Use this one-time code to finish creating your patient account:</p>
+            <p style="margin:0;color:#5e6961;font-size:15px;line-height:1.7">Confirm your email to finish creating your patient account. This secure link will verify your address and sign you in:</p>
           </td></tr>
-          <tr><td align="center" style="padding:22px 32px">
-            <div style="display:inline-block;padding:16px 24px;border:1px solid #dce5dc;background:#f7f9f6;color:#244635;font-size:30px;font-weight:bold;letter-spacing:8px">{{ .Token }}</div>
+          <tr><td align="center" style="padding:22px 32px 12px">
+            <a href="{{ .SiteURL }}/verify-email.html?token_hash={{ .TokenHash }}&amp;type=email" style="display:inline-block;padding:14px 24px;background:#244635;color:#ffffff;font-size:15px;font-weight:bold;text-decoration:none">Verify email and sign in</a>
           </td></tr>
           <tr><td style="padding:0 32px 30px">
-            <p style="margin:0;color:#5e6961;font-size:13px;line-height:1.7">Enter this code on the sign-up page. For your security, do not share it with anyone.</p>
+            <p style="margin:12px 0 0;color:#5e6961;font-size:13px;line-height:1.7">If the button does not open, use this 6-digit code on the sign-up page:</p>
+            <p style="margin:12px 0;padding:14px;border:1px solid #dce5dc;background:#f7f9f6;color:#244635;text-align:center;font-size:28px;font-weight:bold;letter-spacing:8px">{{ .Token }}</p>
+            <p style="margin:0;color:#5e6961;font-size:13px;line-height:1.7">For your security, do not share this link or code with anyone.</p>
             <p style="margin:18px 0 0;color:#7a847d;font-size:12px;line-height:1.6">If you did not request an account, you can ignore this message.</p>
           </td></tr>
         </table>

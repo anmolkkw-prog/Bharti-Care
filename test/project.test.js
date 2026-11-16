@@ -35,11 +35,14 @@ test('patient sign-up collects and verifies a six-digit email OTP', () => {
   assert.match(page, /id="signup-otp"[^>]*inputmode="numeric"[^>]*maxlength="6"/);
   assert.match(page, /id="resend-otp"/);
   assert.match(app, /auth\.verifyOtp\(\{ email: verificationEmail, token, type: 'signup' \}\)/);
+  assert.match(app, /auth\.verifyOtp\(\{ token_hash: tokenHash, type: 'email' \}\)/);
   assert.match(app, /auth\.resend\(\{ type: 'signup', email: verificationEmail \}\)/);
   assert.match(supabaseConfig, /\[auth\.email\][\s\S]*?enable_confirmations = true/);
   assert.match(supabaseConfig, /\[auth\.email\.template\.confirmation\][\s\S]*?confirmation\.html/);
   assert.match(emailTemplate, /\{\{ \.Token \}\}/);
   assert.doesNotMatch(emailTemplate, /ConfirmationURL/);
+  assert.match(emailTemplate, /verify-email\.html\?token_hash=\{\{ \.TokenHash \}\}/);
+  assert.match(fs.readFileSync(path.join(root, 'src', 'pages', 'verify-email.html'), 'utf8'), /data-page="email-verification"/);
   assert.match(app, /startResendCooldown/);
   assert.match(app, /email address not authorized/i);
 });
@@ -47,8 +50,9 @@ test('patient sign-up collects and verifies a six-digit email OTP', () => {
 test('Render publishes the generated site and receives Supabase configuration at build time', () => {
   const blueprint = fs.readFileSync(path.join(root, 'render.yaml'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  const configWriter = fs.readFileSync(path.join(root, 'scripts', 'write-config.js'), 'utf8');
   assert.match(blueprint, /staticPublishPath:\s*\.\/dist/);
-  assert.match(blueprint, /key:\s*SUPABASE_URL[\s\S]*?sync:\s*false/);
-  assert.match(blueprint, /key:\s*SUPABASE_ANON_KEY[\s\S]*?sync:\s*false/);
+  assert.match(configWriter, /supabase', 'public-config\.json/);
+  assert.match(configWriter, /process\.env\.SUPABASE_URL \|\| publicConfig\.url/);
   assert.match(app, /add SUPABASE_URL and SUPABASE_ANON_KEY under the service Environment settings/);
 });
