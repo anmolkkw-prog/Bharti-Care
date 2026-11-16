@@ -74,7 +74,8 @@ test('patient email confirmation is link-based and returns to password sign-in',
   assert.match(app, /email_not_confirmed|email\[\\s_-\]\*not/);
   assert.match(page, /id="resend-confirmation"[^>]*>Resend confirmation link/);
   assert.match(app, /auth\.signUp\(\{[\s\S]*?emailRedirectTo/);
-  assert.match(app, /auth\.verifyOtp\(\{ token_hash: tokenHash, type: 'email' \}\)/);
+  assert.match(app, /auth\.verifyOtp\(\{ token_hash: tokenHash, type: verificationType \}\)/);
+  assert.match(app, /\['signup', 'email'\]\.includes\(verificationType\)/);
   assert.match(app, /detectSessionInUrl: true/);
   assert.match(app, /already have consumed a PKCE callback during client initialization/);
   assert.match(app, /client\.auth\.signOut\(\)/);
@@ -82,7 +83,7 @@ test('patient email confirmation is link-based and returns to password sign-in',
   assert.match(app, /sign in here with your email and password/);
   assert.match(supabaseConfig, /enable_confirmations = true/);
   assert.match(supabaseConfig, /confirmation\.html/);
-  assert.match(emailTemplate, /verify-email\.html\?token_hash=\{\{ \.TokenHash \}\}&amp;type=email/);
+  assert.match(emailTemplate, /verify-email\.html\?token_hash=\{\{ \.TokenHash \}\}&amp;type=signup/);
   assert.doesNotMatch(emailTemplate, /\{\{ \.Token \}\}|ConfirmationURL|6-digit code|one.time password/i);
   assert.match(callback, /data-page="email-verification"/);
   assert.match(app, /patient_id: patientId/);
