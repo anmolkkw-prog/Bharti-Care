@@ -184,6 +184,7 @@ with check (public.current_role() in ('doctor','admin') and exists (
   and a.patient_id = prescriptions.patient_id and a.doctor_id = prescriptions.doctor_id
   and (a.doctor_id = (select auth.uid()) or public.current_role() = 'admin')
 ));
+drop policy if exists prescriptions_staff_update on public.prescriptions;
 create policy prescriptions_staff_update on public.prescriptions for update to authenticated
 using ((doctor_id = (select auth.uid()) and public.current_role() = 'doctor') or public.current_role() = 'admin')
 with check ((doctor_id = (select auth.uid()) and public.current_role() = 'doctor') or public.current_role() = 'admin');

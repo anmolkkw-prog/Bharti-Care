@@ -16,6 +16,9 @@ test('security and booking capacity are implemented in the database schema', () 
   assert.match(sql, /enable row level security/); assert.match(sql, /create or replace function public\.book_appointment/);
   assert.match(sql, /pg_advisory_xact_lock/); assert.match(sql, /taken >= 10/); assert.match(sql, /raw_app_meta_data/);
   assert.match(sql, /Asia\/Kolkata/);
+  for (const [, name, table] of sql.matchAll(/create policy ([a-z_]+) on public\.([a-z_]+)/gi)) {
+    assert.ok(sql.includes(`drop policy if exists ${name} on public.${table};`), `${name} must be safely replaceable`);
+  }
 });
 
 test('service role key is not included in browser assets', () => {
