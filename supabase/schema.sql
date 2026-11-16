@@ -96,6 +96,7 @@ create table if not exists public.appointments (
   appointment_time time not null,
   visit_type text not null check (char_length(visit_type) between 1 and 100),
   comment text check (comment is null or char_length(comment) <= 1000),
+  payment_method text not null default 'clinic',
   status text not null default 'pending' check (status in ('pending', 'confirmed', 'completed', 'cancelled')),
   visit_summary text check (visit_summary is null or char_length(visit_summary) <= 2000),
   created_at timestamptz not null default now(),
@@ -108,6 +109,9 @@ alter table public.appointments drop constraint if exists appointment_slot;
 alter table public.appointments add constraint appointment_slot check (
   appointment_time = any(array['09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00','21:00']::time[])
 );
+alter table public.appointments add column if not exists payment_method text not null default 'clinic';
+alter table public.appointments drop constraint if exists appointments_payment_method_check;
+alter table public.appointments add constraint appointments_payment_method_check check (payment_method in ('clinic','upi_demo'));
 create index if not exists appointments_date_time_idx on public.appointments(appointment_date, appointment_time, doctor_id);
 create index if not exists appointments_patient_idx on public.appointments(patient_id, appointment_date desc);
 alter table public.appointments enable row level security;
@@ -222,7 +226,9 @@ end $$;
 revoke all on function public.available_appointment_slots(date) from public;
 grant execute on function public.available_appointment_slots(date) to authenticated;
 
-create or replace function public.book_appointment(p_date date, p_time time, p_visit_type text, p_comment text default null)
+drop function if exists public.book_appointment(date,time,text,text);
+drop function if exists public.book_appointment(date,time,text,text,text);
+create function public.book_appointment(p_date date, p_time time, p_visit_type text, p_comment text default null, p_payment_method text default 'clinic')
 returns uuid language plpgsql security definer set search_path = '' as $$
 declare patient uuid := auth.uid(); d uuid; appointment uuid; taken integer;
 begin
@@ -235,17 +241,18 @@ begin
   if p_visit_type is null or char_length(trim(p_visit_type)) not between 1 and 100 then raise exception 'Choose a visit type'; end if;
   if p_comment is null or nullif(trim(p_comment), '') is null then raise exception 'Add a note for the clinic'; end if;
   if char_length(p_comment) > 1000 then raise exception 'Description is too long'; end if;
+  if p_payment_method is null or p_payment_method not in ('clinic','upi_demo') then raise exception 'Choose a valid payment preference'; end if;
   select p.id into d from public.profiles p where p.role = 'doctor' and p.is_active order by p.created_at limit 1;
   if d is null then raise exception 'No active doctor is available'; end if;
   perform pg_advisory_xact_lock(hashtextextended(p_date::text || p_time::text || d::text, 0));
   select count(*) into taken from public.appointments a where a.doctor_id = d and a.appointment_date = p_date and a.appointment_time = p_time and a.status in ('pending','confirmed');
   if taken >= 5 then raise exception 'This appointment time is fully booked'; end if;
-  insert into public.appointments(patient_id, doctor_id, appointment_date, appointment_time, visit_type, comment)
-  values(patient, d, p_date, p_time, trim(p_visit_type), nullif(trim(p_comment),'')) returning id into appointment;
+  insert into public.appointments(patient_id, doctor_id, appointment_date, appointment_time, visit_type, comment, payment_method)
+  values(patient, d, p_date, p_time, trim(p_visit_type), nullif(trim(p_comment),''), p_payment_method) returning id into appointment;
   return appointment;
 end $$;
-revoke all on function public.book_appointment(date,time,text,text) from public;
-grant execute on function public.book_appointment(date,time,text,text) to authenticated;
+revoke all on function public.book_appointment(date,time,text,text,text) from public;
+grant execute on function public.book_appointment(date,time,text,text,text) to authenticated;
 
 -- Only the Supabase service role (manage-doctor Edge Function) can create staff profiles.
 revoke insert, update, delete on public.staff_details from anon, authenticated;

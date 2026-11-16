@@ -78,8 +78,10 @@
     const buttons = options.doctor ? `<div class="data-actions">${row.status === 'pending' ? `<button class="small-button" data-confirm="${esc(row.id)}">Confirm</button>` : ''}${row.status === 'confirmed' ? `<button class="small-button" data-complete="${esc(row.id)}">Complete visit</button>` : ''}<button class="small-button" data-open-visit="${esc(row.id)}">Details & notes</button></div>` : (options.patient && row.status === 'completed' && !row.feedback ? `<div class="data-actions"><button class="small-button" data-feedback="${esc(row.id)}">Leave feedback</button></div>` : (options.admin && ['pending','confirmed'].includes(row.status) ? `<div class="data-actions"><button class="small-button" data-admin-status="${esc(row.id)}" data-status="${row.status === 'pending' ? 'confirmed' : 'completed'}">${row.status === 'pending' ? 'Confirm' : 'Mark completed'}</button></div>` : ''));
     const feedbackData = Array.isArray(row.feedback) ? row.feedback[0] : row.feedback;
     const feedback = feedbackData ? `<p><strong>Patient feedback${feedbackData.rating ? ` · ${esc(feedbackData.rating)}/5` : ''}:</strong> ${esc(feedbackData.message || '')}</p>` : '';
+    const paymentPreference = row.payment_method === 'upi_demo' ? 'UPI / QR demo · not paid' : 'Pay at clinic';
+    const payment = `<p><strong>Payment preference:</strong> ${paymentPreference}</p>`;
     const note = row.visit_summary ? `<p><strong>Visit summary:</strong> ${esc(row.visit_summary)}</p>` : '';
-    return `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">${esc(row.visit_type || 'Appointment')}</span><h3>${options.patient ? esc(row.doctor_name || 'Dr. Bharati Pujari') : esc(profileName(patient))}</h3><p>${esc(formatDate(row.appointment_date))} · ${esc(formatTime(row.appointment_time))}</p>${idLabel}</div>${patientLabel}<div><p>${esc(row.comment || 'No additional notes')}</p></div><div>${statusBadge(row.status)}</div>${buttons}</div>${note}${feedback}</article>`;
+    return `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">${esc(row.visit_type || 'Appointment')}</span><h3>${options.patient ? esc(row.doctor_name || 'Dr. Bharati Pujari') : esc(profileName(patient))}</h3><p>${esc(formatDate(row.appointment_date))} · ${esc(formatTime(row.appointment_time))}</p>${idLabel}</div>${patientLabel}<div><p>${esc(row.comment || 'No additional notes')}</p>${payment}</div><div>${statusBadge(row.status)}</div>${buttons}</div>${note}${feedback}</article>`;
   }
 
   async function initLanding() {
@@ -244,6 +246,7 @@
       const date = form.elements.appointment_date.value;
       const time = form.elements.appointment_time.value;
       const visitType = form.elements.visit_type.value;
+      const paymentMethod = form.elements.payment_method.value;
       if (!date || !time || !visitType) return message($('#appointment-request-message'), 'Choose a date, an available time, and a visit type.');
       submit.disabled = true;
       message($('#appointment-request-message'), 'Sending your request…');
@@ -255,11 +258,13 @@
         const { error } = await client.rpc('book_appointment', {
           p_date: date, p_time: time, p_visit_type: visitType,
           p_comment: [`Call back: ${phone}`, note].filter(Boolean).join('\n\n'),
+          p_payment_method: paymentMethod,
         });
         if (error) throw error;
         message($('#appointment-request-message'), 'Request sent. The clinic will contact you to confirm the appointment.', true);
         toast('Appointment request sent.');
         form.reset();
+        $('#demo-payment').hidden = true;
         requestDate.min = localDate();
         $('#request-time').innerHTML = '<option value="">Choose a date first</option>';
         $('#request-time').disabled = true;
@@ -268,6 +273,10 @@
         message($('#appointment-request-message'), errorText(error));
         await loadAvailableSlots();
       } finally { submit.disabled = false; }
+    });
+    const paymentSelect = requestForm.elements.payment_method;
+    paymentSelect.addEventListener('change', () => {
+      $('#demo-payment').hidden = paymentSelect.value !== 'upi_demo';
     });
     $('#health-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget;
@@ -352,7 +361,7 @@
     const { data: a, error } = await client.from('appointments').select('*, patient:profiles!appointments_patient_id_fkey(full_name,email,phone)').eq('id', id).single();
     if (error) return toast(errorText(error), true);
     const { data: hp } = await client.from('health_profiles').select('height_cm,weight_kg,medical_history').eq('patient_id', a.patient_id).maybeSingle();
-    $('#appointment-detail').innerHTML = `<div class="detail-grid"><div><strong>Patient</strong>${esc(profileName(a.patient))}</div><div><strong>Patient ID</strong>${esc(a.patient_id)}</div><div><strong>Email / phone</strong>${esc(a.patient?.email || '')} · ${esc(a.patient?.phone || '—')}</div><div><strong>Visit</strong>${esc(formatDate(a.appointment_date))} · ${esc(formatTime(a.appointment_time))}</div><div><strong>Height / weight</strong>${hp?.height_cm ? `${esc(hp.height_cm)} cm` : '—'} · ${hp?.weight_kg ? `${esc(hp.weight_kg)} kg` : '—'}</div><div class="span-two"><strong>Medical history</strong>${esc(hp?.medical_history || 'None provided')}</div><div class="span-two"><strong>Concern</strong>${esc(a.visit_type)} — ${esc(a.comment || 'No additional notes')}</div></div>`;
+    $('#appointment-detail').innerHTML = `<div class="detail-grid"><div><strong>Patient</strong>${esc(profileName(a.patient))}</div><div><strong>Patient ID</strong>${esc(a.patient_id)}</div><div><strong>Email / phone</strong>${esc(a.patient?.email || '')} · ${esc(a.patient?.phone || '—')}</div><div><strong>Visit</strong>${esc(formatDate(a.appointment_date))} · ${esc(formatTime(a.appointment_time))}</div><div><strong>Payment preference</strong>${a.payment_method === 'upi_demo' ? 'UPI / QR demo · not paid' : 'Pay at clinic'}</div><div><strong>Height / weight</strong>${hp?.height_cm ? `${esc(hp.height_cm)} cm` : '—'} · ${hp?.weight_kg ? `${esc(hp.weight_kg)} kg` : '—'}</div><div class="span-two"><strong>Medical history</strong>${esc(hp?.medical_history || 'None provided')}</div><div class="span-two"><strong>Concern</strong>${esc(a.visit_type)} — ${esc(a.comment || 'No additional notes')}</div></div>`;
     const form = $('#appointment-update-form'); form.dataset.id = a.id; form.elements.summary.value = a.visit_summary || ''; form.elements.prescription.value = '';
     const { data: oldRx } = await client.from('prescriptions').select('medication,instructions').eq('appointment_id', id).maybeSingle();
     if (oldRx) { form.elements.prescription.value = [oldRx.medication, oldRx.instructions].filter(Boolean).join('\n'); }
@@ -380,7 +389,7 @@
 
   async function loadAdminOverview() {
     const results = await Promise.all([
-      client.from('appointments').select('id,status,appointment_date,appointment_time,visit_type,patient_id,comment,profiles!appointments_patient_id_fkey(full_name,email,phone)').order('created_at', { ascending: false }).limit(8),
+      client.from('appointments').select('id,status,appointment_date,appointment_time,visit_type,patient_id,comment,payment_method,profiles!appointments_patient_id_fkey(full_name,email,phone)').order('created_at', { ascending: false }).limit(8),
       client.from('appointments').select('id,status', { count: 'exact', head: true }),
       client.from('appointments').select('id,status', { count: 'exact', head: true }).eq('status', 'pending'),
       client.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'patient'),

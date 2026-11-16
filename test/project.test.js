@@ -13,7 +13,7 @@ test('each portal page loads shared Supabase configuration and clinic logic', ()
 
 test('security and booking capacity are implemented in the database schema', () => {
   const sql = fs.readFileSync(path.join(root, 'supabase/schema.sql'), 'utf8');
-  assert.match(sql, /enable row level security/); assert.match(sql, /create or replace function public\.book_appointment/);
+  assert.match(sql, /enable row level security/); assert.match(sql, /create function public\.book_appointment/);
   assert.match(sql, /pg_advisory_xact_lock/); assert.match(sql, /taken >= 5/); assert.match(sql, /5 - count\(a\.id\)::integer/); assert.match(sql, /having count\(a\.id\) < 5/); assert.match(sql, /raw_app_meta_data/);
   assert.match(sql, /Asia\/Kolkata/);
   const appointmentMigration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20261116000000_hourly_appointment_capacity.sql'), 'utf8');
@@ -31,6 +31,20 @@ test('patient appointment picker labels and formats one-hour ranges', () => {
   assert.match(page, /One-hour appointment slot/);
   assert.match(app, /logic\.slotRange\(value \|\| ''\)/);
   assert.match(logic, /slotRange: value =>/);
+});
+
+test('appointment booking records payment preference and exposes a clearly marked demo QR', () => {
+  const page = fs.readFileSync(path.join(root, 'src', 'pages', 'patient.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  const sql = fs.readFileSync(path.join(root, 'supabase', 'schema.sql'), 'utf8');
+  const migration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20261116000001_appointment_payment_preference.sql'), 'utf8');
+  assert.match(page, /name="payment_method"[\s\S]*?value="clinic"[\s\S]*?value="upi_demo"/);
+  assert.match(page, /Demo QR code[\s\S]*?not a real clinic UPI account[\s\S]*?No payment will be processed/);
+  assert.match(app, /p_payment_method: paymentMethod/);
+  assert.match(app, /row\.payment_method === 'upi_demo'/);
+  assert.match(sql, /payment_method text not null default 'clinic'/);
+  assert.match(sql, /taken >= 5[\s\S]*?payment_method\)\s*values\([\s\S]*?p_payment_method/);
+  assert.match(migration, /payment_method in \('clinic','upi_demo'\)/);
 });
 
 test('service role key is not included in browser assets', () => {
