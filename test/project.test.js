@@ -27,6 +27,32 @@ test('service role key is not included in browser assets', () => {
   }
 });
 
+test('patient detail fields are required in the forms and Supabase policies', () => {
+  const signup = fs.readFileSync(path.join(root, 'src', 'pages', 'index.html'), 'utf8');
+  const patient = fs.readFileSync(path.join(root, 'src', 'pages', 'patient.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  const logic = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'logic.js'), 'utf8');
+  const sql = fs.readFileSync(path.join(root, 'supabase', 'schema.sql'), 'utf8');
+  assert.doesNotMatch(signup + patient, /\(optional\)|placeholder=\"Optional\"/i);
+  for (const id of ['full-name', 'phone', 'signup-height', 'signup-weight']) {
+    assert.match(signup, new RegExp(`id=\"${id}\"[^>]*required`));
+  }
+  for (const field of ['contact_phone', 'comment', 'height_cm', 'weight_kg', 'medical_history', 'message']) {
+    const fieldPattern = new RegExp(`name=\"${field}\"[^>]*required`);
+    assert.match(patient, fieldPattern, `${field} must be required`);
+  }
+  assert.match(app, /if \(!note\) throw new Error/);
+  assert.match(app, /if \(!medicalHistory\)/);
+  assert.match(app, /if \(!feedbackMessage\)/);
+  assert.match(logic, /isValidPhone: phone => typeof phone === 'string' &&/);
+  assert.match(sql, /Patient name and phone are required/);
+  assert.match(sql, /Patient height is required/);
+  assert.match(sql, /Patient weight is required/);
+  assert.match(sql, /nullif\(btrim\(medical_history\), ''\) is not null/);
+  assert.match(sql, /message is not null and nullif\(btrim\(message\), ''\) is not null/);
+  assert.match(sql, /p_comment is null or nullif\(trim\(p_comment\), ''\) is null/);
+});
+
 test('patient email confirmation is link-based and returns to password sign-in', () => {
   const page = fs.readFileSync(path.join(root, 'src', 'pages', 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');

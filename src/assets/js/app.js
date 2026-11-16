@@ -138,16 +138,16 @@
           const name = $('#full-name').value.trim(), phone = $('#phone').value.trim();
           const height = $('#signup-height').value, weight = $('#signup-weight').value;
           if (!isValidName(name)) throw new Error('Please enter a valid name using letters, spaces, apostrophes, periods or hyphens.');
-          if (!logic.isValidPhone(phone)) throw new Error('Please enter a valid phone number, or leave it blank.');
-          if (!logic.isValidHeight(height)) throw new Error('Height must be between 30 and 250 cm.');
-          if (!logic.isValidWeight(weight)) throw new Error('Weight must be between 1 and 500 kg.');
+          if (!logic.isValidPhone(phone)) throw new Error('Enter a valid phone number.');
+          if (!logic.isValidHeight(height)) throw new Error('Enter a height between 30 and 250 cm.');
+          if (!logic.isValidWeight(weight)) throw new Error('Enter a weight between 1 and 500 kg.');
           if (passwordValue.length < 8) throw new Error('Password must be at least 8 characters.');
           const result = await client.auth.signUp({
             email: emailValue,
             password: passwordValue,
             options: {
               emailRedirectTo: `${location.origin}/verify-email.html`,
-              data: { full_name: name, phone: phone || null, height_cm: height ? Number(height) : null, weight_kg: weight ? Number(weight) : null },
+              data: { full_name: name, phone, height_cm: Number(height), weight_kg: Number(weight) },
             },
           });
           if (result.error) throw result.error;
@@ -294,6 +294,7 @@
         const phone = form.elements.contact_phone.value.trim();
         if (!logic.isValidPhone(phone) || !phone) throw new Error('Enter a valid phone number for the clinic to confirm your request.');
         const note = form.elements.comment.value.trim();
+        if (!note) throw new Error('Add a note for the clinic, or enter None if there is nothing else to add.');
         const { error } = await client.rpc('book_appointment', {
           p_date: date, p_time: time, p_visit_type: visitType,
           p_comment: [`Call back: ${phone}`, note].filter(Boolean).join('\n\n'),
@@ -314,9 +315,11 @@
     $('#health-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget;
       const height = f.elements.height_cm.value, weight = f.elements.weight_kg.value;
-      if (!logic.isValidHeight(height)) return message($('#health-message'), 'Height must be between 30 and 250 cm.');
-      if (!logic.isValidWeight(weight)) return message($('#health-message'), 'Weight must be between 1 and 500 kg.');
-      const payload = { patient_id: patientId, height_cm: height ? +height : null, weight_kg: weight ? +weight : null, medical_history: f.elements.medical_history.value.trim() || null };
+      if (!logic.isValidHeight(height)) return message($('#health-message'), 'Enter a height between 30 and 250 cm.');
+      if (!logic.isValidWeight(weight)) return message($('#health-message'), 'Enter a weight between 1 and 500 kg.');
+      const medicalHistory = f.elements.medical_history.value.trim();
+      if (!medicalHistory) return message($('#health-message'), 'Enter your medical history, or None if not applicable.');
+      const payload = { patient_id: patientId, height_cm: +height, weight_kg: +weight, medical_history: medicalHistory };
       const { error } = await client.from('health_profiles').upsert(payload, { onConflict: 'patient_id' });
       message($('#health-message'), error ? errorText(error) : 'Health profile saved.', !error); if (!error) toast('Health profile saved.');
     });
@@ -348,7 +351,9 @@
     $$('[data-feedback-close]').forEach(button => button.addEventListener('click', () => $('#feedback-dialog').close()));
     $('#feedback-form').addEventListener('submit', async event => {
       event.preventDefault(); const f = event.currentTarget;
-      const { error } = await client.from('feedback').insert({ appointment_id: f.elements.appointment_id.value, rating: Number(f.elements.rating.value), message: f.elements.message.value.trim() || null });
+      const feedbackMessage = f.elements.message.value.trim();
+      if (!feedbackMessage) return message($('#feedback-status'), 'Enter feedback before submitting.');
+      const { error } = await client.from('feedback').insert({ appointment_id: f.elements.appointment_id.value, rating: Number(f.elements.rating.value), message: feedbackMessage });
       if (error) return message($('#feedback-status'), errorText(error));
       $('#feedback-dialog').close(); toast('Thank you for your feedback.'); await loadPatientAppointments();
     });

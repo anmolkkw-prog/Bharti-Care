@@ -24,14 +24,41 @@ language sql stable security definer set search_path = '' as $$ select coalesce(
 
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
+declare
+  assigned_role text := case when new.raw_app_meta_data ->> 'role' in ('doctor', 'admin') then new.raw_app_meta_data ->> 'role' else 'patient' end;
+  patient_name text := nullif(trim(new.raw_user_meta_data ->> 'full_name'), '');
+  patient_phone text := nullif(trim(new.raw_user_meta_data ->> 'phone'), '');
+  patient_height text := nullif(trim(new.raw_user_meta_data ->> 'height_cm'), '');
+  patient_weight text := nullif(trim(new.raw_user_meta_data ->> 'weight_kg'), '');
 begin
+  if assigned_role = 'patient' then
+    if patient_name is null or patient_phone is null then
+      raise exception 'Patient name and phone are required.';
+    end if;
+    if patient_phone !~ '^\+?[0-9 ()-]{7,20}$' then
+      raise exception 'Enter a valid patient phone number.';
+    end if;
+    if patient_height is null or patient_height !~ '^[0-9]+([.][0-9]+)?$' then
+      raise exception 'Patient height is required and must be numeric.';
+    end if;
+    if patient_height::numeric not between 30 and 250 then
+      raise exception 'Patient height must be between 30 and 250 cm.';
+    end if;
+    if patient_weight is null or patient_weight !~ '^[0-9]+([.][0-9]+)?$' then
+      raise exception 'Patient weight is required and must be numeric.';
+    end if;
+    if patient_weight::numeric not between 1 and 500 then
+      raise exception 'Patient weight must be between 1 and 500 kg.';
+    end if;
+  end if;
+
   insert into public.profiles (id, role, full_name, email, phone)
   values (
     new.id,
-    case when new.raw_app_meta_data ->> 'role' in ('doctor', 'admin') then new.raw_app_meta_data ->> 'role' else 'patient' end,
-    nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''),
+    assigned_role,
+    patient_name,
     new.email,
-    nullif(trim(new.raw_user_meta_data ->> 'phone'), '')
+    patient_phone
   ) on conflict (id) do nothing;
   insert into public.health_profiles(patient_id, height_cm, weight_kg)
   values (
@@ -123,11 +150,13 @@ create policy health_read on public.health_profiles for select to authenticated
 using (patient_id = (select auth.uid()) or public.current_role() in ('doctor','admin'));
 drop policy if exists health_patient_insert on public.health_profiles;
 create policy health_patient_insert on public.health_profiles for insert to authenticated
-with check (patient_id = (select auth.uid()) and public.current_role() = 'patient');
+with check (patient_id = (select auth.uid()) and public.current_role() = 'patient'
+  and height_cm is not null and weight_kg is not null and nullif(btrim(medical_history), '') is not null);
 drop policy if exists health_patient_update on public.health_profiles;
 create policy health_patient_update on public.health_profiles for update to authenticated
 using (patient_id = (select auth.uid()) and public.current_role() = 'patient')
-with check (patient_id = (select auth.uid()) and public.current_role() = 'patient');
+with check (patient_id = (select auth.uid()) and public.current_role() = 'patient'
+  and height_cm is not null and weight_kg is not null and nullif(btrim(medical_history), '') is not null);
 grant select, insert, update on public.health_profiles to authenticated;
 
 drop policy if exists staff_details_read on public.staff_details;
@@ -165,7 +194,9 @@ create policy feedback_read on public.feedback for select to authenticated
 using (patient_id = (select auth.uid()) or public.current_role() in ('doctor','admin'));
 drop policy if exists feedback_patient_write on public.feedback;
 create policy feedback_patient_write on public.feedback for insert to authenticated
-with check (patient_id = (select auth.uid()) and public.current_role() = 'patient' and exists (select 1 from public.appointments a where a.id = appointment_id and a.patient_id = (select auth.uid()) and a.status = 'completed'));
+with check (patient_id = (select auth.uid()) and public.current_role() = 'patient'
+  and message is not null and nullif(btrim(message), '') is not null
+  and exists (select 1 from public.appointments a where a.id = appointment_id and a.patient_id = (select auth.uid()) and a.status = 'completed'));
 grant select, insert on public.feedback to authenticated;
 
 create or replace function public.available_appointment_slots(p_date date)
@@ -201,7 +232,8 @@ begin
     or (extract(isodow from p_date)::integer = 6 and p_time = any(array['09:30','10:30','11:30','12:30']::time[]))
   ) then raise exception 'That appointment time is unavailable'; end if;
   if p_visit_type is null or char_length(trim(p_visit_type)) not between 1 and 100 then raise exception 'Choose a visit type'; end if;
-  if p_comment is not null and char_length(p_comment) > 1000 then raise exception 'Description is too long'; end if;
+  if p_comment is null or nullif(trim(p_comment), '') is null then raise exception 'Add a note for the clinic'; end if;
+  if char_length(p_comment) > 1000 then raise exception 'Description is too long'; end if;
   select p.id into d from public.profiles p where p.role = 'doctor' and p.is_active order by p.created_at limit 1;
   if d is null then raise exception 'No active doctor is available'; end if;
   perform pg_advisory_xact_lock(hashtextextended(p_date::text || p_time::text || d::text, 0));

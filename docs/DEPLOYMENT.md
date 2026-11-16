@@ -9,7 +9,7 @@
 5. In **Authentication → SMTP Settings**, configure a custom SMTP provider before accepting patient sign-ups. Supabase's built-in sender is for testing: it only sends to addresses belonging to the Supabase organization and is limited to two emails per hour. If a confirmation email is missing, inspect **Authentication → Logs**, the SMTP provider's delivery/suppression logs, and spam/junk. See [Supabase's SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp) and [email rate limits](https://supabase.com/docs/guides/auth/rate-limits).
 6. Add `/reset-password.html` to the redirect allowlist for password recovery. For the production site, allow `https://YOUR-DOMAIN/**`; locally allow `http://localhost:4173/**`.
 7. Deploy `manage-doctor` separately with the Supabase CLI: `supabase login`, `supabase link --project-ref YOUR_PROJECT_REF`, then `supabase functions deploy manage-doctor`.
-8. Create the first admin in **Authentication → Users → Add user**, then run the following in the SQL Editor with that email substituted:
+8. Create the first admin account through the patient sign-up form, complete the required patient fields, confirm the email, and then run the following in the SQL Editor with that email substituted:
 
    ```sql
    update auth.users
