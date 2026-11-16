@@ -18,7 +18,7 @@ The build generates the public site in `dist/`. Only a Supabase public key belon
 
 ## Authentication
 
-Patient sign-up requires a six-digit email verification code. The deployed Supabase project must have **Authentication → Providers → Email → Confirm email** enabled and its **Confirm signup** email template must include `{{ .Token }}`. Add the deployed site's URLs to **Authentication → URL Configuration**. See the deployment guide for the full setup.
+Patient sign-up requires a six-digit email verification code. The deployed Supabase project must have **Confirm email** enabled, use the branded **Confirm signup** template, and have custom SMTP configured. Supabase's built-in sender is restricted to project team addresses and a low hourly limit. See the [deployment guide](docs/DEPLOYMENT.md) for setup and troubleshooting.
 
 ## Build commands
 

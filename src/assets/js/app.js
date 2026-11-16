@@ -13,6 +13,13 @@
   const message = (el, text, success = false) => { if (!el) return; el.textContent = text || ''; el.classList.toggle('success', success); };
   const toast = (text, error = false) => { const el = $('#toast'); if (!el) return; el.textContent = text; el.classList.toggle('error', error); el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 3600); };
   const errorText = error => error?.message || 'Something went wrong. Please try again.';
+  const emailDeliveryErrorText = error => {
+    const detail = errorText(error);
+    if (/email address not authorized/i.test(detail)) return 'Supabase’s built-in email sender only delivers to project team addresses. Configure a custom SMTP provider in Supabase Auth settings to send verification codes to patients.';
+    if (error?.status === 429 || /rate limit|too many requests/i.test(detail)) return 'Email sending is temporarily rate-limited. Wait a minute before trying again. Supabase’s built-in sender also has a low project-wide limit; configure custom SMTP for patient sign-up.';
+    if (/error sending confirmation email|sending.*email/i.test(detail)) return 'Supabase could not send the verification email. Check Authentication logs and your SMTP settings, then try again.';
+    return detail;
+  };
   const functionErrorText = async (error, functionName) => {
     const detail = errorText(error);
     if (error?.name === 'FunctionsFetchError' || /failed to send a request to the edge function/i.test(detail)) {
@@ -87,9 +94,28 @@
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
     const credentials = $('#credentials-fields'), verification = $('#verification-fields');
     let verificationEmail = '';
+    let resendInterval = null;
+    const startResendCooldown = () => {
+      const button = $('#resend-otp');
+      if (resendInterval) clearInterval(resendInterval);
+      let seconds = 60;
+      button.disabled = true;
+      button.textContent = `Resend code in ${seconds}s`;
+      resendInterval = setInterval(() => {
+        seconds -= 1;
+        if (seconds <= 0) {
+          clearInterval(resendInterval); resendInterval = null;
+          button.disabled = false; button.textContent = 'Resend code';
+          return;
+        }
+        button.textContent = `Resend code in ${seconds}s`;
+      }, 1000);
+    };
     const setMode = next => {
       mode = next;
       verificationEmail = '';
+      if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
+      $('#resend-otp').disabled = false; $('#resend-otp').textContent = 'Resend code';
       credentials.classList.remove('hidden'); verification.classList.add('hidden');
       $('#signup-otp').value = '';
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
@@ -135,6 +161,7 @@
       const submit = $('#auth-submit'); submit.disabled = true; message($('#auth-message'), '');
       try {
         let data;
+        if (!logic.isValidEmail(emailValue)) throw new Error('Enter a valid email address, such as name@example.com.');
         if (mode === 'signup') {
           const name = $('#full-name').value.trim(), phone = $('#phone').value.trim();
           const height = $('#signup-height').value, weight = $('#signup-weight').value;
@@ -153,7 +180,8 @@
           $('#verification-email').textContent = emailValue;
           credentials.classList.add('hidden'); verification.classList.remove('hidden');
           password.value = '';
-          message($('#auth-message-otp'), 'A verification code was sent. Check your inbox and spam folder.', true);
+          message($('#auth-message-otp'), 'If this address can receive a new sign-up code, it should arrive shortly. Check your inbox and spam folder.', true);
+          startResendCooldown();
           $('#signup-otp').focus(); return;
         }
         const result = await client.auth.signInWithPassword({ email: emailValue, password: passwordValue });
@@ -167,7 +195,7 @@
           throw new Error(`This account is registered for the ${profile.role} portal. Select “${profile.role}” to continue.${hint}`);
         }
         location.replace(`/${target}.html`);
-      } catch (err) { message($('#auth-message'), errorText(err)); }
+      } catch (err) { message($('#auth-message'), mode === 'signup' ? emailDeliveryErrorText(err) : errorText(err)); }
       finally { submit.disabled = false; }
     });
     $('#resend-otp').addEventListener('click', async () => {
@@ -177,12 +205,14 @@
       try {
         const { error } = await client.auth.resend({ type: 'signup', email: verificationEmail });
         if (error) throw error;
-        message($('#auth-message-otp'), 'A new verification code was sent. Check your inbox and spam folder.', true);
-      } catch (error) { message($('#auth-message-otp'), errorText(error)); }
-      finally { button.disabled = false; }
+        message($('#auth-message-otp'), 'If this address can receive a new sign-up code, it should arrive shortly. Check your inbox and spam folder.', true);
+        startResendCooldown();
+      } catch (error) { message($('#auth-message-otp'), emailDeliveryErrorText(error)); button.disabled = false; }
     });
     $('#cancel-verification').addEventListener('click', () => {
       verificationEmail = '';
+      if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
+      $('#resend-otp').disabled = false; $('#resend-otp').textContent = 'Resend code';
       verification.classList.add('hidden'); credentials.classList.remove('hidden');
       email.focus(); message($('#auth-message-otp'), '');
     });

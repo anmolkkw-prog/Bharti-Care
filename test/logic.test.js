@@ -11,6 +11,11 @@ test('name validation rejects missing, numeric, and malformed names', () => {
   assert.equal(logic.isValidName(null), false);
 });
 
+test('email validation accepts normal addresses and rejects malformed input', () => {
+  for (const email of ['patient@example.com', 'name+clinic@sub.example.in', ' patient@example.com ']) assert.equal(logic.isValidEmail(email), true, email);
+  for (const email of ['', 'patient', 'patient@', '@example.com', 'patient@example', 'name with spaces@example.com']) assert.equal(logic.isValidEmail(email), false, email);
+});
+
 test('phone is optional but validates entered values', () => {
   for (const phone of ['', '   ', '+91 98765 43210', '9876543210', '(212) 555-0100']) assert.equal(logic.isValidPhone(phone), true, phone);
   for (const phone of ['12', 'abcdefghij', '123456789012345678901']) assert.equal(logic.isValidPhone(phone), false, phone);
