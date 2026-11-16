@@ -20,13 +20,6 @@
     }
     return 'Supabase could not initialize. Check the site build configuration and reload the page.';
   };
-  const emailDeliveryErrorText = error => {
-    const detail = errorText(error);
-    if (/email address not authorized/i.test(detail)) return 'Supabase’s built-in email sender only delivers to project team addresses. Configure a custom SMTP provider in Supabase Auth settings to send confirmation emails to patients.';
-    if (error?.status === 429 || /rate limit|too many requests/i.test(detail)) return 'Email sending is temporarily rate-limited. Wait a minute before trying again. Supabase’s built-in sender also has a low project-wide limit; configure custom SMTP for patient sign-up.';
-    if (/error sending confirmation email|sending.*email/i.test(detail)) return 'Supabase could not send the confirmation email. Check Authentication logs and your SMTP settings, then try again.';
-    return detail;
-  };
   const functionErrorText = async (error, functionName) => {
     const detail = errorText(error);
     if (error?.name === 'FunctionsFetchError' || /failed to send a request to the edge function/i.test(detail)) {
@@ -91,11 +84,6 @@
 
   async function initLanding() {
     $('#year').textContent = new Date().getFullYear();
-    const params = new URLSearchParams(location.search);
-    if (params.get('email-verified') === '1') {
-      message($('#auth-message'), 'Your email is confirmed. Sign in with your email and password.', true);
-      history.replaceState(null, '', '/#portal');
-    }
     if (!client) message($('#auth-message'), supabaseSetupMessage());
     const { data: { session } = {} } = client ? await client.auth.getSession() : { data: {} };
     if (session) {
@@ -105,7 +93,6 @@
     let mode = 'login';
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
     const patientDetailInputs = $$('input', signup);
-    const resendConfirmation = $('#resend-confirmation');
     const setMode = next => {
       mode = next;
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
@@ -116,28 +103,9 @@
       password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
       $('#auth-submit').innerHTML = mode === 'signup' ? 'Create your account <span>↗</span>' : 'Sign in <span>↗</span>';
       message($('#auth-message'), '');
-      resendConfirmation.classList.add('hidden');
     };
     setMode('login');
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
-    resendConfirmation.addEventListener('click', async () => {
-      const emailValue = email.value.trim().toLowerCase();
-      if (!logic.isValidEmail(emailValue)) return message($('#auth-message'), 'Enter the account email first.');
-      resendConfirmation.disabled = true;
-      message($('#auth-message'), 'Sending a confirmation link…');
-      try {
-        const { error } = await client.auth.resend({
-          type: 'signup',
-          email: emailValue,
-          options: { emailRedirectTo: `${location.origin}/verify-email.html` },
-        });
-        if (error) throw error;
-        message($('#auth-message'), 'If this account needs confirmation, a new link has been sent. Check your inbox and spam folder.', true);
-        resendConfirmation.classList.add('hidden');
-      } catch (error) {
-        message($('#auth-message'), emailDeliveryErrorText(error));
-      } finally { resendConfirmation.disabled = false; }
-    });
     $('#forgot-password').addEventListener('click', async () => {
       const emailValue = email.value.trim().toLowerCase();
       if (!logic.isValidEmail(emailValue)) return message($('#auth-message'), 'Enter the account email first.');
@@ -147,7 +115,7 @@
         const { error } = await client.auth.resetPasswordForEmail(emailValue, { redirectTo: `${location.origin}/reset-password.html` });
         if (error) throw error;
         message($('#auth-message'), 'If an account exists for this email, a reset link has been sent. Check the inbox and spam folder.', true);
-      } catch (error) { message($('#auth-message'), emailDeliveryErrorText(error)); }
+      } catch (error) { message($('#auth-message'), errorText(error)); }
       finally { button.disabled = false; }
     });
     form.addEventListener('submit', async event => {
@@ -169,20 +137,19 @@
             email: emailValue,
             password: passwordValue,
             options: {
-              emailRedirectTo: `${location.origin}/verify-email.html`,
               data: { full_name: name, phone, height_cm: Number(height), weight_kg: Number(weight) },
             },
           });
           if (result.error) throw result.error;
-          if (result.data.session) {
-            await client.auth.signOut();
-            throw new Error('Email confirmation is not enabled for this Supabase project. Enable Authentication → Providers → Email → Confirm email, then try again.');
-          }
+          if (!result.data.session) throw new Error('Supabase is still requiring email confirmation. Disable Confirm email in Authentication → Providers → Email, then delete this unconfirmed account and sign up again.');
           password.value = '';
           patientDetailInputs.forEach(input => { input.value = ''; });
           setMode('login');
           email.value = emailValue;
-          message($('#auth-message'), 'If this address can receive a new account confirmation, a link will arrive shortly. Open it to confirm your email, then sign in here with your email and password. Check your inbox and spam folder.', true);
+          const { data: profile, error: profileError } = await client.from('profiles').select('role, is_active').eq('id', result.data.user.id).single();
+          if (profileError) throw profileError;
+          if (!profile.is_active) { await client.auth.signOut(); throw new Error('This account is disabled. Contact the clinic administrator.'); }
+          location.replace(`/${ROLE_PAGE[profile.role] || 'patient'}.html`);
           return;
         }
         const result = await client.auth.signInWithPassword({ email: emailValue, password: passwordValue });
@@ -199,54 +166,10 @@
         location.replace(`/${target}.html`);
       } catch (err) {
         const detail = errorText(err);
-        if (mode === 'login' && (err?.code === 'email_not_confirmed' || /email[\s_-]*not[\s_-]*confirmed/i.test(detail))) {
-          resendConfirmation.classList.remove('hidden');
-          message($('#auth-message'), 'Your email is not confirmed yet. Check your inbox or request a new confirmation link below.');
-        } else {
-          message($('#auth-message'), mode === 'signup' ? emailDeliveryErrorText(err) : detail);
-        }
+        message($('#auth-message'), detail);
       } finally { submit.disabled = false; }
     });
     role.addEventListener('change', () => { if (role.value !== 'patient' && mode === 'signup') setMode('login'); });
-  }
-
-  async function initEmailVerification() {
-    const status = $('#email-verification-message');
-    if (!client) return message(status, supabaseSetupMessage());
-    message(status, 'Confirming your email…');
-    try {
-      const params = new URLSearchParams(location.search);
-      const tokenHash = params.get('token_hash');
-      const code = params.get('code');
-      let session = null;
-      if (tokenHash) {
-        // Supabase signup confirmation links use `type=signup`. Keep `email`
-        // supported for confirmation links generated by older/custom templates.
-        const verificationType = params.get('type');
-        if (!['signup', 'email'].includes(verificationType)) throw new Error('This confirmation link is not valid for email confirmation.');
-        const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: verificationType });
-        if (error) throw error;
-        session = data.session;
-      } else {
-        // Supabase may already have consumed a PKCE callback during client initialization.
-        // Use that session first to avoid exchanging the same one-time code twice.
-        const { data: { session: activeSession }, error: sessionError } = await client.auth.getSession();
-        if (sessionError) throw sessionError;
-        session = activeSession;
-        if (!session && code) {
-          const { data, error } = await client.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          session = data.session;
-        }
-      }
-      if (!session) throw new Error('This confirmation link is invalid or expired. Return to sign in and create a new account if needed.');
-      const { error: signOutError } = await client.auth.signOut();
-      if (signOutError) throw signOutError;
-      message(status, 'Your email is confirmed. You can now sign in with your email and password.', true);
-      setTimeout(() => location.replace('/?email-verified=1#portal'), 900);
-    } catch (error) {
-      message(status, `${errorText(error)} Return to sign in and request a new confirmation email if needed.`);
-    }
   }
 
   async function initPortal() {
@@ -542,6 +465,5 @@
 
   if (PAGE === 'landing') initLanding();
   else if (PAGE === 'reset-password') initPasswordRecovery();
-  else if (PAGE === 'email-verification') initEmailVerification();
   else initPortal().then(() => { if (PAGE === 'doctor') bindDoctorForm(); }).catch(error => toast(errorText(error), true));
 })();

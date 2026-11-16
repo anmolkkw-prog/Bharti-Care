@@ -4,12 +4,11 @@
 
 1. The checked-in `supabase/public-config.json` contains this app's public Supabase project URL and publishable key so static builds, including Render, can generate `config.js` without environment variables. To build against a different project, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `.env` locally or in the hosting provider's environment variables; environment values override the checked-in defaults. The build rejects database passwords, secret keys, and service-role keys.
 2. Run `supabase/schema.sql` in the Supabase SQL Editor for a new project. For an existing project, review and apply schema changes according to your database migration process.
-3. In **Authentication → Providers → Email**, enable email sign-ups and **Confirm email**. The checked-in `supabase/config.toml` also sets `enable_confirmations = true` for local Supabase development; it does not change an already hosted project's dashboard settings.
-4. Set the project's **Site URL** in **Authentication → URL Configuration** to the deployed site URL and add the deployed and local app URLs to the redirect allowlist. The signup flow directs Supabase to `/verify-email.html`; that page confirms the callback, clears the temporary session, and returns the patient to email/password sign-in. Supabase’s default confirmation template uses a link and works without a custom template. If you want to apply [`supabase/templates/confirmation.html`](../supabase/templates/confirmation.html), configure custom SMTP or use a plan that supports custom email templates, then select it under **Authentication → Email Templates → Confirm signup**.
-5. In **Authentication → SMTP Settings**, configure a custom SMTP provider before accepting patient sign-ups. Supabase's built-in sender is for testing: it only sends to addresses belonging to the Supabase organization and is limited to two emails per hour. If a confirmation email is missing, inspect **Authentication → Logs**, the SMTP provider's delivery/suppression logs, and spam/junk. See [Supabase's SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp) and [email rate limits](https://supabase.com/docs/guides/auth/rate-limits).
+3. In **Authentication → Providers → Email**, enable email sign-ups and turn **Confirm email** off. The checked-in `supabase/config.toml` also sets `enable_confirmations = false` for local Supabase development; changing this file does not alter an already hosted project's dashboard settings.
+4. Existing unconfirmed users must be confirmed by an administrator in Supabase Auth or deleted and recreated after disabling confirmation. New patient sign-ups return an active session and go directly to the patient portal.
 6. Add `/reset-password.html` to the redirect allowlist for password recovery. For the production site, allow `https://YOUR-DOMAIN/**`; locally allow `http://localhost:4173/**`.
 7. Deploy `manage-doctor` separately with the Supabase CLI: `supabase login`, `supabase link --project-ref YOUR_PROJECT_REF`, then `supabase functions deploy manage-doctor`.
-8. Create the first admin account through the patient sign-up form, complete the required patient fields, confirm the email, and then run the following in the SQL Editor with that email substituted:
+8. Create the first admin account through the patient sign-up form, complete the required patient fields, and then run the following in the SQL Editor with that email substituted:
 
    ```sql
    update auth.users
@@ -34,11 +33,9 @@ Use the included `render.yaml` Blueprint. The static build uses `supabase/public
 
 Run `npm start` to build and serve the generated site at `http://localhost:4173`. To run Supabase locally, use the Supabase CLI and apply the checked-in `supabase/config.toml` and schema.
 
-## Email confirmation and sign-in
+## Email/password sign-in
 
-The browser validates the signup fields and creates patient accounts with `auth.signUp`. Supabase sends the configured confirmation email. The user follows its link to `/verify-email.html`, where the app confirms the address, clears the temporary confirmation session, and redirects to the sign-in form. The patient then signs in with the email address and password created during sign-up. If a patient tries to sign in before confirming, the page offers to resend the confirmation link. Public sign-up does not disclose whether an address is already registered. Email syntax checks cannot prove that an inbox exists; the confirmation link proves inbox access.
-
-The Supabase dashboard is separate from repository configuration. In the live project, enable **Authentication → Providers → Email → Confirm email**, set the production site URL and allowed redirect URLs, and configure custom SMTP for reliable delivery to patient addresses. Supabase’s free tier with its default sender may not permit custom email templates; in that case, its default confirmation email remains in place. Local template changes do not alter the hosted template.
+Patient registration uses Supabase email/password sign-up without an email confirmation link, verification page, or OTP screen. The sign-up response must contain an active session; the app then opens the patient portal. In the hosted Supabase project's dashboard, turn **Authentication → Providers → Email → Confirm email** off. Supabase project dashboard settings are separate from repository configuration, so setting `enable_confirmations = false` in `supabase/config.toml` only applies when configuring the local Supabase stack. Accounts created while confirmation was enabled remain unconfirmed and must be confirmed administratively or recreated.
 
 ## Secrets and generated files
 
