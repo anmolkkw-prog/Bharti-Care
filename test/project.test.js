@@ -86,3 +86,11 @@ test('Render publishes the generated site and receives Supabase configuration at
   assert.match(configWriter, /process\.env\.SUPABASE_URL \|\| publicConfig\.url/);
   assert.match(app, /SUPABASE_URL and SUPABASE_ANON_KEY in the hosting environment/);
 });
+
+test('clinic direction links open Google Maps with the clinic as destination', () => {
+  for (const file of ['index.html', 'about.html']) {
+    const html = fs.readFileSync(path.join(root, 'src', 'pages', file), 'utf8');
+    assert.match(html, /maps\/dir\/\?api=1&destination=Dr\.%20Bharati%20Pujari/);
+    assert.match(html, />Directions in Google Maps ↗<\/a>/);
+  }
+});
