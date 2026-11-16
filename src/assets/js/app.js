@@ -104,16 +104,19 @@
     }
     let mode = 'login';
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
+    const patientDetailInputs = $$('input', signup);
     const setMode = next => {
       mode = next;
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
       signup.classList.toggle('hidden', mode !== 'signup');
+      patientDetailInputs.forEach(input => { input.disabled = mode !== 'signup'; input.required = mode === 'signup'; });
       role.disabled = mode === 'signup';
       if (mode === 'signup') role.value = 'patient';
       password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
       $('#auth-submit').innerHTML = mode === 'signup' ? 'Create your account <span>↗</span>' : 'Sign in <span>↗</span>';
       message($('#auth-message'), '');
     };
+    setMode('login');
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
     $('#forgot-password').addEventListener('click', async () => {
       const emailValue = email.value.trim().toLowerCase();
@@ -139,8 +142,8 @@
           const height = $('#signup-height').value, weight = $('#signup-weight').value;
           if (!isValidName(name)) throw new Error('Please enter a valid name using letters, spaces, apostrophes, periods or hyphens.');
           if (!logic.isValidPhone(phone)) throw new Error('Enter a valid phone number.');
-          if (!logic.isValidHeight(height)) throw new Error('Enter a height between 30 and 250 cm.');
-          if (!logic.isValidWeight(weight)) throw new Error('Enter a weight between 1 and 500 kg.');
+          if (height === '' || !logic.isValidHeight(height)) throw new Error('Enter a height between 30 and 250 cm.');
+          if (weight === '' || !logic.isValidWeight(weight)) throw new Error('Enter a weight between 1 and 500 kg.');
           if (passwordValue.length < 8) throw new Error('Password must be at least 8 characters.');
           const result = await client.auth.signUp({
             email: emailValue,
@@ -156,6 +159,7 @@
             throw new Error('Email confirmation is not enabled for this Supabase project. Enable Authentication → Providers → Email → Confirm email, then try again.');
           }
           password.value = '';
+          patientDetailInputs.forEach(input => { input.value = ''; });
           setMode('login');
           email.value = emailValue;
           message($('#auth-message'), 'If this address can receive a new account confirmation, a link will arrive shortly. Open it to confirm your email, then sign in here with your email and password. Check your inbox and spam folder.', true);
@@ -315,8 +319,8 @@
     $('#health-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget;
       const height = f.elements.height_cm.value, weight = f.elements.weight_kg.value;
-      if (!logic.isValidHeight(height)) return message($('#health-message'), 'Enter a height between 30 and 250 cm.');
-      if (!logic.isValidWeight(weight)) return message($('#health-message'), 'Enter a weight between 1 and 500 kg.');
+      if (height === '' || !logic.isValidHeight(height)) return message($('#health-message'), 'Enter a height between 30 and 250 cm.');
+      if (weight === '' || !logic.isValidWeight(weight)) return message($('#health-message'), 'Enter a weight between 1 and 500 kg.');
       const medicalHistory = f.elements.medical_history.value.trim();
       if (!medicalHistory) return message($('#health-message'), 'Enter your medical history, or None if not applicable.');
       const payload = { patient_id: patientId, height_cm: +height, weight_kg: +weight, medical_history: medicalHistory };
@@ -405,10 +409,13 @@
     $('[data-dialog-close]').addEventListener('click', () => $('#appointment-dialog').close());
     $('#appointment-update-form').addEventListener('submit', async e => {
       e.preventDefault(); const f = e.currentTarget, id = f.dataset.id;
-      const { error } = await client.from('appointments').update({ visit_summary: f.elements.summary.value.trim() || null, status: 'completed' }).eq('id', id);
-      if (error) return message($('#appointment-action-message'), errorText(error));
+      const summary = f.elements.summary.value.trim();
       const rxText = f.elements.prescription.value.trim();
-      if (rxText) {
+      if (!summary) return message($('#appointment-action-message'), 'Enter a visit summary.');
+      if (!rxText) return message($('#appointment-action-message'), 'Enter prescription details or None.');
+      const { error } = await client.from('appointments').update({ visit_summary: summary, status: 'completed' }).eq('id', id);
+      if (error) return message($('#appointment-action-message'), errorText(error));
+      if (rxText.toLowerCase() !== 'none') {
         const lines = rxText.split('\n'), medication = lines.shift().trim(), instructions = lines.join('\n').trim() || null;
         const { data: appointment } = await client.from('appointments').select('patient_id,doctor_id').eq('id', id).single();
         const { error: rxError } = await client.from('prescriptions').upsert({ appointment_id: id, patient_id: appointment.patient_id, doctor_id: appointment.doctor_id, medication, instructions }, { onConflict: 'appointment_id' });

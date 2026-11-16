@@ -34,6 +34,11 @@ test('patient detail fields are required in the forms and Supabase policies', ()
   const logic = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'logic.js'), 'utf8');
   const sql = fs.readFileSync(path.join(root, 'supabase', 'schema.sql'), 'utf8');
   assert.doesNotMatch(signup + patient, /\(optional\)|placeholder=\"Optional\"/i);
+  assert.doesNotMatch(signup, /id=\"auth-form\"[^>]*novalidate/);
+  assert.match(app, /patientDetailInputs\.forEach\(input => \{ input\.disabled = mode !== 'signup'; input\.required = mode === 'signup'; \}\)/);
+  assert.match(app, /height === '' \|\| !logic\.isValidHeight\(height\)/);
+  assert.match(app, /weight === '' \|\| !logic\.isValidWeight\(weight\)/);
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'src', 'pages', 'doctor.html'), 'utf8'), /\(optional\)/i);
   for (const id of ['full-name', 'phone', 'signup-height', 'signup-weight']) {
     assert.match(signup, new RegExp(`id=\"${id}\"[^>]*required`));
   }
