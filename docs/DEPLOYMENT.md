@@ -5,7 +5,7 @@
 1. Create or open the clinic's Supabase project. Set `SUPABASE_URL` and the public publishable/anon key in the hosting provider's environment variables. For local development, copy `.env.example` to `.env`.
 2. Run `supabase/schema.sql` in the Supabase SQL Editor for a new project. For an existing project, review and apply schema changes according to your database migration process.
 3. In **Authentication → Providers → Email**, enable email sign-ups and **Confirm email**. The checked-in `supabase/config.toml` also sets `enable_confirmations = true` for local Supabase development; it does not change an already hosted project's dashboard settings.
-4. In **Authentication → Email Templates → Confirm signup**, set the subject to `Your Bharti Care verification code` and copy the HTML from [`supabase/templates/confirmation.html`](../supabase/templates/confirmation.html). Keep the `{{ .Token }}` placeholder intact and set the OTP length to six digits.
+4. In **Authentication → Email Templates → Confirm signup**, set the subject to `Your Bharti Care verification code` and copy the HTML from [`supabase/templates/confirmation.html`](../supabase/templates/confirmation.html). Keep `{{ .Token }}` intact and remove any `{{ .ConfirmationURL }}` links from this template; Supabase uses a confirmation URL to send a clickable sign-in link. Set the OTP length to six digits.
 5. In **Authentication → SMTP Settings**, configure a custom SMTP provider before accepting patient sign-ups. Supabase's built-in sender is for testing: it only sends to addresses belonging to the Supabase organization and is limited to two emails per hour. If a code is missing, first inspect **Authentication → Logs** and the SMTP provider's delivery/suppression logs. Also check spam/junk. See [Supabase's SMTP setup](https://supabase.com/docs/guides/auth/auth-smtp) and [email rate limits](https://supabase.com/docs/guides/auth/rate-limits).
 6. In **Authentication → URL Configuration**, set the production site as the Site URL and allow the deployed and local URLs. Include `/reset-password.html` for password recovery redirects. For example, allow `https://YOUR-DOMAIN/reset-password.html` and `http://localhost:4173/reset-password.html`.
 7. Deploy `manage-doctor` separately with the Supabase CLI: `supabase login`, `supabase link --project-ref YOUR_PROJECT_REF`, then `supabase functions deploy manage-doctor`.
@@ -28,7 +28,7 @@ Import this repository, set `SUPABASE_URL` and `SUPABASE_ANON_KEY`, and deploy. 
 
 ## Render
 
-Use the included `render.yaml` Blueprint. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` as Render environment variables. The build publishes only `dist/`.
+Use the included `render.yaml` Blueprint. Render will ask you to provide `SUPABASE_URL` and `SUPABASE_ANON_KEY` because they are declared with `sync: false`; enter them in Render's environment settings. The build publishes only `dist/`, and the security headers are applied by the Blueprint. Redeploy after changing environment variables.
 
 ## Local development
 

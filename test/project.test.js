@@ -39,6 +39,14 @@ test('patient sign-up collects and verifies a six-digit email OTP', () => {
   assert.match(supabaseConfig, /\[auth\.email\][\s\S]*?enable_confirmations = true/);
   assert.match(supabaseConfig, /\[auth\.email\.template\.confirmation\][\s\S]*?confirmation\.html/);
   assert.match(emailTemplate, /\{\{ \.Token \}\}/);
+  assert.doesNotMatch(emailTemplate, /ConfirmationURL/);
   assert.match(app, /startResendCooldown/);
   assert.match(app, /email address not authorized/i);
+});
+
+test('Render publishes the generated site and receives Supabase configuration at build time', () => {
+  const blueprint = fs.readFileSync(path.join(root, 'render.yaml'), 'utf8');
+  assert.match(blueprint, /staticPublishPath:\s*\.\/dist/);
+  assert.match(blueprint, /key:\s*SUPABASE_URL[\s\S]*?sync:\s*false/);
+  assert.match(blueprint, /key:\s*SUPABASE_ANON_KEY[\s\S]*?sync:\s*false/);
 });

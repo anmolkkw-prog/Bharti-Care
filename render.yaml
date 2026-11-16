@@ -3,5 +3,20 @@ services:
     name: bharti-care-connect
     runtime: static
     branch: main
-    buildCommand: npm run build:render
-    staticPublishPath: dist
+    buildCommand: npm ci && npm run build:render
+    staticPublishPath: ./dist
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+    headers:
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
