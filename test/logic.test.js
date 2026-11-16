@@ -28,7 +28,9 @@ test('health measurements accept optional blank or values within bounds', () => 
   assert.equal(logic.isValidWeight('0'), false); assert.equal(logic.isValidWeight('501'), false); assert.equal(logic.isValidWeight('abc'), false);
 });
 
-test('appointment slots respect opening hours and scheduled breaks', () => {
-  assert.deepEqual(logic.slots(), ['10:00','11:00','12:00','13:00','15:00','16:00','18:00','19:00','20:00','21:00']);
-  assert.equal(logic.slots().includes('14:00'), false); assert.equal(logic.slots().includes('17:00'), false);
+test('appointment slots match the weekday and Saturday booking schedule', () => {
+  assert.deepEqual(logic.slots('2026-11-16'), ['10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00']);
+  assert.deepEqual(logic.slots('2026-11-21'), ['09:30','10:30','11:30','12:30']);
+  assert.deepEqual(logic.slots('2026-11-22'), []);
+  assert.deepEqual(logic.slots('invalid'), []);
 });

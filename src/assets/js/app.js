@@ -16,15 +16,15 @@
   const supabaseSetupMessage = () => {
     if (!sb) return 'The Supabase client library did not load. Check the connection to cdn.jsdelivr.net and reload the page.';
     if (!cfg.url || !cfg.anonKey || cfg.url.includes('your-project') || cfg.anonKey.includes('your-anon-key')) {
-      return 'Supabase configuration is missing from this site build. On Render, add SUPABASE_URL and SUPABASE_ANON_KEY under the service Environment settings, then deploy the latest commit.';
+      return 'Supabase configuration is missing from this site build. Check supabase/public-config.json or set SUPABASE_URL and SUPABASE_ANON_KEY in the hosting environment, then rebuild.';
     }
     return 'Supabase could not initialize. Check the site build configuration and reload the page.';
   };
   const emailDeliveryErrorText = error => {
     const detail = errorText(error);
-    if (/email address not authorized/i.test(detail)) return 'Supabase’s built-in email sender only delivers to project team addresses. Configure a custom SMTP provider in Supabase Auth settings to send verification codes to patients.';
+    if (/email address not authorized/i.test(detail)) return 'Supabase’s built-in email sender only delivers to project team addresses. Configure a custom SMTP provider in Supabase Auth settings to send confirmation emails to patients.';
     if (error?.status === 429 || /rate limit|too many requests/i.test(detail)) return 'Email sending is temporarily rate-limited. Wait a minute before trying again. Supabase’s built-in sender also has a low project-wide limit; configure custom SMTP for patient sign-up.';
-    if (/error sending confirmation email|sending.*email/i.test(detail)) return 'Supabase could not send the verification email. Check Authentication logs and your SMTP settings, then try again.';
+    if (/error sending confirmation email|sending.*email/i.test(detail)) return 'Supabase could not send the confirmation email. Check Authentication logs and your SMTP settings, then try again.';
     return detail;
   };
   const functionErrorText = async (error, functionName) => {
@@ -54,7 +54,7 @@
   const isValidName = logic.isValidName;
 
   async function getSessionProfile() {
-    if (!client) throw new Error('Supabase is not configured. Add SUPABASE_URL and SUPABASE_ANON_KEY, then run npm run build.');
+    if (!client) throw new Error(supabaseSetupMessage());
     const { data: { session }, error } = await client.auth.getSession();
     if (error) throw error;
     if (!session) return null;
@@ -91,7 +91,12 @@
 
   async function initLanding() {
     $('#year').textContent = new Date().getFullYear();
-    if (!client) { message($('#auth-message'), supabaseSetupMessage()); }
+    const params = new URLSearchParams(location.search);
+    if (params.get('email-verified') === '1') {
+      message($('#auth-message'), 'Your email is confirmed. Sign in with your email and password.', true);
+      history.replaceState(null, '', '/#portal');
+    }
+    if (!client) message($('#auth-message'), supabaseSetupMessage());
     const { data: { session } = {} } = client ? await client.auth.getSession() : { data: {} };
     if (session) {
       const { data: p } = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
@@ -99,75 +104,35 @@
     }
     let mode = 'login';
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
-    const credentials = $('#credentials-fields'), verification = $('#verification-fields');
-    let verificationEmail = '';
-    let resendInterval = null;
-    const startResendCooldown = () => {
-      const button = $('#resend-otp');
-      if (resendInterval) clearInterval(resendInterval);
-      let seconds = 60;
-      button.disabled = true;
-      button.textContent = `Resend code in ${seconds}s`;
-      resendInterval = setInterval(() => {
-        seconds -= 1;
-        if (seconds <= 0) {
-          clearInterval(resendInterval); resendInterval = null;
-          button.disabled = false; button.textContent = 'Resend code';
-          return;
-        }
-        button.textContent = `Resend code in ${seconds}s`;
-      }, 1000);
-    };
     const setMode = next => {
       mode = next;
-      verificationEmail = '';
-      if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
-      $('#resend-otp').disabled = false; $('#resend-otp').textContent = 'Resend code';
-      credentials.classList.remove('hidden'); verification.classList.add('hidden');
-      $('#signup-otp').value = '';
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
       signup.classList.toggle('hidden', mode !== 'signup');
-      role.disabled = mode === 'signup'; if (mode === 'signup') role.value = 'patient';
+      role.disabled = mode === 'signup';
+      if (mode === 'signup') role.value = 'patient';
       password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
       $('#auth-submit').innerHTML = mode === 'signup' ? 'Create your account <span>↗</span>' : 'Sign in <span>↗</span>';
       message($('#auth-message'), '');
-      message($('#auth-message-otp'), '');
     };
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
     $('#forgot-password').addEventListener('click', async () => {
       const emailValue = email.value.trim().toLowerCase();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue)) return message($('#auth-message'), 'Enter the doctor’s account email first.');
+      if (!logic.isValidEmail(emailValue)) return message($('#auth-message'), 'Enter the account email first.');
       const button = $('#forgot-password'); button.disabled = true;
       message($('#auth-message'), 'Sending a password reset link…');
       try {
         const { error } = await client.auth.resetPasswordForEmail(emailValue, { redirectTo: `${location.origin}/reset-password.html` });
         if (error) throw error;
         message($('#auth-message'), 'If an account exists for this email, a reset link has been sent. Check the inbox and spam folder.', true);
-      } catch (error) { message($('#auth-message'), errorText(error)); }
+      } catch (error) { message($('#auth-message'), emailDeliveryErrorText(error)); }
       finally { button.disabled = false; }
     });
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (!client) return message($('#auth-message'), supabaseSetupMessage());
-      if (verificationEmail) {
-        const verifyButton = $('#verify-otp');
-        const token = $('#signup-otp').value.trim();
-        if (!/^\d{6}$/.test(token)) return message($('#auth-message-otp'), 'Enter the 6-digit code from your email.');
-        verifyButton.disabled = true; message($('#auth-message-otp'), 'Verifying your email…');
-        try {
-          const { data, error } = await client.auth.verifyOtp({ email: verificationEmail, token, type: 'signup' });
-          if (error) throw error;
-          if (!data.session) throw new Error('Email verification did not create a session. Please sign in.');
-          message($('#auth-message-otp'), 'Email verified. Opening your patient portal…', true);
-          setTimeout(() => location.replace('/patient.html'), 600);
-        } catch (error) { message($('#auth-message-otp'), errorText(error)); }
-        finally { verifyButton.disabled = false; }
-        return;
-      }
       const emailValue = email.value.trim().toLowerCase(), passwordValue = password.value;
       const submit = $('#auth-submit'); submit.disabled = true; message($('#auth-message'), '');
       try {
-        let data;
         if (!logic.isValidEmail(emailValue)) throw new Error('Enter a valid email address, such as name@example.com.');
         if (mode === 'signup') {
           const name = $('#full-name').value.trim(), phone = $('#phone').value.trim();
@@ -177,26 +142,32 @@
           if (!logic.isValidHeight(height)) throw new Error('Height must be between 30 and 250 cm.');
           if (!logic.isValidWeight(weight)) throw new Error('Weight must be between 1 and 500 kg.');
           if (passwordValue.length < 8) throw new Error('Password must be at least 8 characters.');
-          const result = await client.auth.signUp({ email: emailValue, password: passwordValue, options: { data: { full_name: name, phone: phone || null, height_cm: height ? Number(height) : null, weight_kg: weight ? Number(weight) : null } } });
-          data = result.data; if (result.error) throw result.error;
-          if (data.session) {
+          const result = await client.auth.signUp({
+            email: emailValue,
+            password: passwordValue,
+            options: {
+              emailRedirectTo: `${location.origin}/verify-email.html`,
+              data: { full_name: name, phone: phone || null, height_cm: height ? Number(height) : null, weight_kg: weight ? Number(weight) : null },
+            },
+          });
+          if (result.error) throw result.error;
+          if (result.data.session) {
             await client.auth.signOut();
-            throw new Error('Email OTP verification is disabled for this Supabase project. Turn on Email → Confirm email in Supabase Auth settings, then try again.');
+            throw new Error('Email confirmation is not enabled for this Supabase project. Enable Authentication → Providers → Email → Confirm email, then try again.');
           }
-          verificationEmail = emailValue;
-          $('#verification-email').textContent = emailValue;
-          credentials.classList.add('hidden'); verification.classList.remove('hidden');
           password.value = '';
-          message($('#auth-message-otp'), 'If this address can receive a new sign-up code, it should arrive shortly. Check your inbox and spam folder.', true);
-          startResendCooldown();
-          $('#signup-otp').focus(); return;
+          setMode('login');
+          email.value = emailValue;
+          message($('#auth-message'), 'If this address can receive a new account confirmation, a link will arrive shortly. Open it to confirm your email, then sign in here with your email and password. Check your inbox and spam folder.', true);
+          return;
         }
         const result = await client.auth.signInWithPassword({ email: emailValue, password: passwordValue });
-        data = result.data; if (result.error) throw result.error;
-        const { data: profile, error: pErr } = await client.from('profiles').select('role, is_active').eq('id', data.user.id).single();
+        if (result.error) throw result.error;
+        const { data: profile, error: pErr } = await client.from('profiles').select('role, is_active').eq('id', result.data.user.id).single();
         if (pErr) throw pErr;
         if (!profile.is_active) { await client.auth.signOut(); throw new Error('This account is disabled. Contact the clinic administrator.'); }
-        const target = ROLE_PAGE[profile.role]; if (!target) throw new Error('Your account has no portal role. Contact the clinic administrator.');
+        const target = ROLE_PAGE[profile.role];
+        if (!target) throw new Error('Your account has no portal role. Contact the clinic administrator.');
         if (role.value !== profile.role) {
           const hint = profile.role === 'patient' && role.value === 'doctor' ? ' Doctor accounts must be created by an administrator in Care team.' : '';
           throw new Error(`This account is registered for the ${profile.role} portal. Select “${profile.role}” to continue.${hint}`);
@@ -205,55 +176,42 @@
       } catch (err) { message($('#auth-message'), mode === 'signup' ? emailDeliveryErrorText(err) : errorText(err)); }
       finally { submit.disabled = false; }
     });
-    $('#resend-otp').addEventListener('click', async () => {
-      if (!verificationEmail) return;
-      const button = $('#resend-otp'); button.disabled = true;
-      message($('#auth-message-otp'), 'Sending a new code…');
-      try {
-        const { error } = await client.auth.resend({ type: 'signup', email: verificationEmail });
-        if (error) throw error;
-        message($('#auth-message-otp'), 'If this address can receive a new sign-up code, it should arrive shortly. Check your inbox and spam folder.', true);
-        startResendCooldown();
-      } catch (error) { message($('#auth-message-otp'), emailDeliveryErrorText(error)); button.disabled = false; }
-    });
-    $('#cancel-verification').addEventListener('click', () => {
-      verificationEmail = '';
-      if (resendInterval) { clearInterval(resendInterval); resendInterval = null; }
-      $('#resend-otp').disabled = false; $('#resend-otp').textContent = 'Resend code';
-      verification.classList.add('hidden'); credentials.classList.remove('hidden');
-      email.focus(); message($('#auth-message-otp'), '');
-    });
     role.addEventListener('change', () => { if (role.value !== 'patient' && mode === 'signup') setMode('login'); });
   }
 
   async function initEmailVerification() {
     const status = $('#email-verification-message');
     if (!client) return message(status, supabaseSetupMessage());
-    message(status, 'Verifying your email and signing you in…');
+    message(status, 'Confirming your email…');
     try {
       const params = new URLSearchParams(location.search);
       const tokenHash = params.get('token_hash');
       const code = params.get('code');
       let session = null;
       if (tokenHash) {
-        if (params.get('type') !== 'email') throw new Error('This verification link is not valid for email confirmation.');
+        if (params.get('type') !== 'email') throw new Error('This confirmation link is not valid for email confirmation.');
         const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: 'email' });
         if (error) throw error;
         session = data.session;
-      } else if (code) {
-        const { data, error } = await client.auth.exchangeCodeForSession(code);
-        if (error) throw error;
-        session = data.session;
       } else {
-        const { data, error } = await client.auth.getSession();
-        if (error) throw error;
-        session = data.session;
+        // Supabase may already have consumed a PKCE callback during client initialization.
+        // Use that session first to avoid exchanging the same one-time code twice.
+        const { data: { session: activeSession }, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw sessionError;
+        session = activeSession;
+        if (!session && code) {
+          const { data, error } = await client.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          session = data.session;
+        }
       }
-      if (!session) throw new Error('This link is invalid or expired. Return to sign in and request a new verification email.');
-      message(status, 'Email verified. You are signed in. Opening your patient portal…', true);
-      setTimeout(() => location.replace('/patient.html'), 700);
+      if (!session) throw new Error('This confirmation link is invalid or expired. Return to sign in and create a new account if needed.');
+      const { error: signOutError } = await client.auth.signOut();
+      if (signOutError) throw signOutError;
+      message(status, 'Your email is confirmed. You can now sign in with your email and password.', true);
+      setTimeout(() => location.replace('/?email-verified=1#portal'), 900);
     } catch (error) {
-      message(status, `${errorText(error)} Return to sign in and request a new verification email.`);
+      message(status, `${errorText(error)} Return to sign in and request a new confirmation email if needed.`);
     }
   }
 
@@ -264,7 +222,7 @@
     if (!auth) return location.replace('/');
     if (auth.profile.role !== PAGE || !auth.profile.is_active) return location.replace(ROLE_PAGE[auth.profile.role] ? `/${ROLE_PAGE[auth.profile.role]}.html` : '/');
     $('#current-user').textContent = auth.profile.full_name || auth.session.user.email;
-    if (PAGE === 'patient') { $('#patient-name').textContent = auth.profile.full_name || 'there'; setTabs(); bindPatient(); await Promise.all([loadPatientAppointments(), loadHealth(), loadPrescriptions('patient')]); }
+    if (PAGE === 'patient') { $('#patient-name').textContent = auth.profile.full_name || 'there'; setTabs(); bindPatient(auth.session.user.id); await Promise.all([loadPatientAppointments(), loadHealth(), loadPrescriptions('patient')]); }
     if (PAGE === 'doctor') { $('#doctor-name').textContent = auth.profile.full_name || 'Doctor'; setTabs(); bindDoctor(auth.session.user.id); await loadDoctorAppointments(); }
     if (PAGE === 'admin') { setTabs(); bindAdmin(); await loadAdminOverview(); }
   }
@@ -317,7 +275,7 @@
     if (error) return showEmpty(target, errorText(error));
     $(target).innerHTML = data?.length ? data.map(p => `<article class="data-card"><div class="data-card-main"><div><span class="eyebrow">PRESCRIPTION · ${esc(formatDate(p.created_at.slice(0, 10)))}</span><h3>${view === 'patient' ? `From ${esc(p.doctor?.full_name || 'your doctor')}` : esc(p.patient?.full_name || p.patient?.email || 'Patient')}</h3></div><div><p>${esc(p.medication)}</p><p>${esc(p.instructions || '')}</p></div><div><p>Appointment: ${esc(p.appointment_id || '—')}</p></div></div></article>`).join('') : '<div class="empty-state">Prescriptions shared by your care team will appear here.</div>';
   }
-  function bindPatient() {
+  function bindPatient(patientId) {
     const requestForm = $('#appointment-request-form');
     const requestDate = $('#request-date');
     requestDate.min = localDate();
@@ -358,7 +316,7 @@
       const height = f.elements.height_cm.value, weight = f.elements.weight_kg.value;
       if (!logic.isValidHeight(height)) return message($('#health-message'), 'Height must be between 30 and 250 cm.');
       if (!logic.isValidWeight(weight)) return message($('#health-message'), 'Weight must be between 1 and 500 kg.');
-      const payload = { height_cm: height ? +height : null, weight_kg: weight ? +weight : null, medical_history: f.elements.medical_history.value.trim() || null };
+      const payload = { patient_id: patientId, height_cm: height ? +height : null, weight_kg: weight ? +weight : null, medical_history: f.elements.medical_history.value.trim() || null };
       const { error } = await client.from('health_profiles').upsert(payload, { onConflict: 'patient_id' });
       message($('#health-message'), error ? errorText(error) : 'Health profile saved.', !error); if (!error) toast('Health profile saved.');
     });

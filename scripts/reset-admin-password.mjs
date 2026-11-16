@@ -1,7 +1,23 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 
-const projectUrl = 'https://jslxszphayjyszkahnqr.supabase.co';
-const adminEmail = 'admin@gmail.com';
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+function readEnvFile() {
+  const file = path.join(projectRoot, '.env');
+  if (!fs.existsSync(file)) return;
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (match && !process.env[match[1]]) process.env[match[1]] = match[2].replace(/^(["'])(.*)\1$/, '$2');
+  }
+}
+readEnvFile();
+const publicConfig = JSON.parse(fs.readFileSync(path.join(projectRoot, 'supabase', 'public-config.json'), 'utf8'));
+const projectUrl = process.env.SUPABASE_URL || publicConfig.url;
+if (!projectUrl) throw new Error('Set SUPABASE_URL or configure supabase/public-config.json first.');
+if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(projectUrl)) throw new Error('The configured Supabase project URL is invalid.');
 
 function readHidden(label) {
   if (!stdin.isTTY || typeof stdin.setRawMode !== 'function') {
@@ -32,6 +48,10 @@ function readHidden(label) {
 }
 
 async function main() {
+  const rl = createInterface({ input: stdin, output: stdout });
+  const adminEmail = (process.env.ADMIN_EMAIL || await rl.question('Admin account email: ')).trim().toLowerCase();
+  rl.close();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminEmail)) throw new Error('Enter a valid admin account email.');
   let serviceKey = await readHidden('Supabase service-role/secret key (input hidden): ');
   let password = await readHidden('New admin password (input hidden, 16+ characters): ');
   const confirmation = await readHidden('Confirm new password (input hidden): ');

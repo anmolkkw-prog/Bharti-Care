@@ -18,7 +18,7 @@ The build generates the public site in `dist/`. Only a Supabase publishable/anon
 
 ## Authentication
 
-Patient sign-up supports a six-digit email code and a secure verification link that signs the patient in. The deployed Supabase project must have **Confirm email** enabled and use the branded **Confirm signup** template from `supabase/templates/confirmation.html`, with no `{{ .ConfirmationURL }}` link. Configure custom SMTP for delivery to patient addresses. See the [deployment guide](docs/DEPLOYMENT.md) for setup and troubleshooting.
+Patient sign-up uses a confirmation link. After confirming the email address, patients return to the site and sign in with their email and password. The deployed Supabase project must have **Confirm email** enabled. The branded template in `supabase/templates/confirmation.html` is available when the project plan and SMTP configuration support custom templates. Configure custom SMTP for delivery to patient addresses. See the [deployment guide](docs/DEPLOYMENT.md) for setup and troubleshooting.
 
 ## Build commands
 
