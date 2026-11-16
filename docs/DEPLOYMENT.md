@@ -3,7 +3,7 @@
 ## Supabase project
 
 1. The checked-in `supabase/public-config.json` contains this app's public Supabase project URL and publishable key so static builds, including Render, can generate `config.js` without environment variables. To build against a different project, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `.env` locally or in the hosting provider's environment variables; environment values override the checked-in defaults. The build rejects database passwords, secret keys, and service-role keys.
-2. Run `supabase/schema.sql` in the Supabase SQL Editor for a new project. For an existing project, review and apply schema changes according to your database migration process.
+2. Run `supabase/schema.sql` in the Supabase SQL Editor for a new project. For this appointment change on an existing project, run `supabase/migrations/20261116000000_hourly_appointment_capacity.sql` in the SQL Editor so its availability and booking functions enforce a maximum of five active appointments per hourly slot.
 3. In **Authentication → Providers → Email**, enable email sign-ups and turn **Confirm email** off. The checked-in `supabase/config.toml` also sets `enable_confirmations = false` for local Supabase development; changing this file does not alter an already hosted project's dashboard settings.
 4. Existing unconfirmed users must be confirmed by an administrator in Supabase Auth or deleted and recreated after disabling confirmation. New patient sign-ups return an active session and go directly to the patient portal.
 6. Add `/reset-password.html` to the redirect allowlist for password recovery. For the production site, allow `https://YOUR-DOMAIN/**`; locally allow `http://localhost:4173/**`.

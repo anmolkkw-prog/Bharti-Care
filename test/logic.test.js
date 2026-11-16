@@ -33,4 +33,9 @@ test('appointment slots match the weekday and Saturday booking schedule', () => 
   assert.deepEqual(logic.slots('2026-11-21'), ['09:30','10:30','11:30','12:30']);
   assert.deepEqual(logic.slots('2026-11-22'), []);
   assert.deepEqual(logic.slots('invalid'), []);
+  assert.equal(logic.slotRange('10:00'), '10:00–11:00');
+  assert.equal(logic.slotRange('17:00'), '17:00–18:00');
+  assert.equal(logic.slotRange('11:30:00'), '11:30–12:30');
+  assert.equal(logic.slotRange('23:30'), '23:30–00:30');
+  assert.equal(logic.slotRange('invalid'), '—');
 });

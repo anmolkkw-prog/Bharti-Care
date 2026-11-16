@@ -14,11 +14,23 @@ test('each portal page loads shared Supabase configuration and clinic logic', ()
 test('security and booking capacity are implemented in the database schema', () => {
   const sql = fs.readFileSync(path.join(root, 'supabase/schema.sql'), 'utf8');
   assert.match(sql, /enable row level security/); assert.match(sql, /create or replace function public\.book_appointment/);
-  assert.match(sql, /pg_advisory_xact_lock/); assert.match(sql, /taken >= 10/); assert.match(sql, /raw_app_meta_data/);
+  assert.match(sql, /pg_advisory_xact_lock/); assert.match(sql, /taken >= 5/); assert.match(sql, /5 - count\(a\.id\)::integer/); assert.match(sql, /having count\(a\.id\) < 5/); assert.match(sql, /raw_app_meta_data/);
   assert.match(sql, /Asia\/Kolkata/);
+  const appointmentMigration = fs.readFileSync(path.join(root, 'supabase', 'migrations', '20261116000000_hourly_appointment_capacity.sql'), 'utf8');
+  assert.match(appointmentMigration, /taken >= 5/);
+  assert.match(appointmentMigration, /having count\(a\.id\) < 5/);
   for (const [, name, table] of sql.matchAll(/create policy ([a-z_]+) on public\.([a-z_]+)/gi)) {
     assert.ok(sql.includes(`drop policy if exists ${name} on public.${table};`), `${name} must be safely replaceable`);
   }
+});
+
+test('patient appointment picker labels and formats one-hour ranges', () => {
+  const page = fs.readFileSync(path.join(root, 'src', 'pages', 'patient.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  const logic = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'logic.js'), 'utf8');
+  assert.match(page, /One-hour appointment slot/);
+  assert.match(app, /logic\.slotRange\(value \|\| ''\)/);
+  assert.match(logic, /slotRange: value =>/);
 });
 
 test('service role key is not included in browser assets', () => {

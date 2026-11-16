@@ -40,7 +40,7 @@
   };
   const localDate = (date = new Date()) => { const d = new Date(date); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
   const formatDate = value => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-  const formatTime = value => { if (!value) return '—'; const [h, m] = value.slice(0, 5).split(':').map(Number); return new Date(2000, 0, 1, h, m).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
+  const formatTime = value => logic.slotRange(value || '');
   const initials = name => (name || 'Patient').trim().split(/\s+/).slice(0, 2).map(s => s[0]).join('').toUpperCase();
   const statusBadge = status => `<span class="badge ${esc(status)}">${esc(status)}</span>`;
   const profileName = profile => profile?.full_name || profile?.email || 'Patient';
