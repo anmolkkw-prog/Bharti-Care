@@ -13,6 +13,13 @@
   const message = (el, text, success = false) => { if (!el) return; el.textContent = text || ''; el.classList.toggle('success', success); };
   const toast = (text, error = false) => { const el = $('#toast'); if (!el) return; el.textContent = text; el.classList.toggle('error', error); el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 3600); };
   const errorText = error => error?.message || 'Something went wrong. Please try again.';
+  const supabaseSetupMessage = () => {
+    if (!sb) return 'The Supabase client library did not load. Check the connection to cdn.jsdelivr.net and reload the page.';
+    if (!cfg.url || !cfg.anonKey || cfg.url.includes('your-project') || cfg.anonKey.includes('your-anon-key')) {
+      return 'Supabase configuration is missing from this site build. On Render, add SUPABASE_URL and SUPABASE_ANON_KEY under the service Environment settings, then deploy the latest commit.';
+    }
+    return 'Supabase could not initialize. Check the site build configuration and reload the page.';
+  };
   const emailDeliveryErrorText = error => {
     const detail = errorText(error);
     if (/email address not authorized/i.test(detail)) return 'Supabase’s built-in email sender only delivers to project team addresses. Configure a custom SMTP provider in Supabase Auth settings to send verification codes to patients.';
@@ -84,7 +91,7 @@
 
   async function initLanding() {
     $('#year').textContent = new Date().getFullYear();
-    if (!client) { message($('#auth-message'), 'Set up your Supabase project to enable sign in.'); }
+    if (!client) { message($('#auth-message'), supabaseSetupMessage()); }
     const { data: { session } = {} } = client ? await client.auth.getSession() : { data: {} };
     if (session) {
       const { data: p } = await client.from('profiles').select('role').eq('id', session.user.id).maybeSingle();
@@ -141,7 +148,7 @@
     });
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (!client) return message($('#auth-message'), 'Add your Supabase URL and anon key in .env, then run npm run build.');
+      if (!client) return message($('#auth-message'), supabaseSetupMessage());
       if (verificationEmail) {
         const verifyButton = $('#verify-otp');
         const token = $('#signup-otp').value.trim();
@@ -220,7 +227,7 @@
   }
 
   async function initPortal() {
-    if (!client) { document.body.innerHTML = '<main class="app-main"><div class="empty-state">Supabase is not configured. Add your project URL and anon key in .env and run npm run build.</div></main>'; return; }
+    if (!client) { document.body.innerHTML = `<main class="app-main"><div class="empty-state">${esc(supabaseSetupMessage())}</div></main>`; return; }
     let auth;
     try { auth = await getSessionProfile(); } catch (error) { toast(errorText(error), true); setTimeout(() => location.replace('/'), 1200); return; }
     if (!auth) return location.replace('/');

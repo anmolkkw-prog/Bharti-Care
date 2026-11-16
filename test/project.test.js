@@ -46,7 +46,9 @@ test('patient sign-up collects and verifies a six-digit email OTP', () => {
 
 test('Render publishes the generated site and receives Supabase configuration at build time', () => {
   const blueprint = fs.readFileSync(path.join(root, 'render.yaml'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
   assert.match(blueprint, /staticPublishPath:\s*\.\/dist/);
   assert.match(blueprint, /key:\s*SUPABASE_URL[\s\S]*?sync:\s*false/);
   assert.match(blueprint, /key:\s*SUPABASE_ANON_KEY[\s\S]*?sync:\s*false/);
+  assert.match(app, /add SUPABASE_URL and SUPABASE_ANON_KEY under the service Environment settings/);
 });
