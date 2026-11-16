@@ -105,6 +105,7 @@
     let mode = 'login';
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
     const patientDetailInputs = $$('input', signup);
+    const resendConfirmation = $('#resend-confirmation');
     const setMode = next => {
       mode = next;
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
@@ -115,9 +116,28 @@
       password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
       $('#auth-submit').innerHTML = mode === 'signup' ? 'Create your account <span>↗</span>' : 'Sign in <span>↗</span>';
       message($('#auth-message'), '');
+      resendConfirmation.classList.add('hidden');
     };
     setMode('login');
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
+    resendConfirmation.addEventListener('click', async () => {
+      const emailValue = email.value.trim().toLowerCase();
+      if (!logic.isValidEmail(emailValue)) return message($('#auth-message'), 'Enter the account email first.');
+      resendConfirmation.disabled = true;
+      message($('#auth-message'), 'Sending a confirmation link…');
+      try {
+        const { error } = await client.auth.resend({
+          type: 'signup',
+          email: emailValue,
+          options: { emailRedirectTo: `${location.origin}/verify-email.html` },
+        });
+        if (error) throw error;
+        message($('#auth-message'), 'If this account needs confirmation, a new link has been sent. Check your inbox and spam folder.', true);
+        resendConfirmation.classList.add('hidden');
+      } catch (error) {
+        message($('#auth-message'), emailDeliveryErrorText(error));
+      } finally { resendConfirmation.disabled = false; }
+    });
     $('#forgot-password').addEventListener('click', async () => {
       const emailValue = email.value.trim().toLowerCase();
       if (!logic.isValidEmail(emailValue)) return message($('#auth-message'), 'Enter the account email first.');
@@ -177,8 +197,15 @@
           throw new Error(`This account is registered for the ${profile.role} portal. Select “${profile.role}” to continue.${hint}`);
         }
         location.replace(`/${target}.html`);
-      } catch (err) { message($('#auth-message'), mode === 'signup' ? emailDeliveryErrorText(err) : errorText(err)); }
-      finally { submit.disabled = false; }
+      } catch (err) {
+        const detail = errorText(err);
+        if (mode === 'login' && (err?.code === 'email_not_confirmed' || /email[\s_-]*not[\s_-]*confirmed/i.test(detail))) {
+          resendConfirmation.classList.remove('hidden');
+          message($('#auth-message'), 'Your email is not confirmed yet. Check your inbox or request a new confirmation link below.');
+        } else {
+          message($('#auth-message'), mode === 'signup' ? emailDeliveryErrorText(err) : detail);
+        }
+      } finally { submit.disabled = false; }
     });
     role.addEventListener('change', () => { if (role.value !== 'patient' && mode === 'signup') setMode('login'); });
   }

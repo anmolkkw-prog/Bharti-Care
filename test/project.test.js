@@ -69,7 +69,10 @@ test('patient email confirmation is link-based and returns to password sign-in',
   const callback = fs.readFileSync(path.join(root, 'src', 'pages', 'verify-email.html'), 'utf8');
   assert.doesNotMatch(page, /signup-otp|resend-otp|verification-fields/);
   assert.match(page, /id="auth-submit"[\s\S]*?<\/button><\/div><\/form>/);
-  assert.doesNotMatch(app, /auth\.resend|startResendCooldown|signup-otp|verification-fields/);
+  assert.doesNotMatch(app, /startResendCooldown|signup-otp|verification-fields/);
+  assert.match(app, /auth\.resend\(\{[\s\S]*?type: 'signup'[\s\S]*?emailRedirectTo/);
+  assert.match(app, /email_not_confirmed|email\[\\s_-\]\*not/);
+  assert.match(page, /id="resend-confirmation"[^>]*>Resend confirmation link/);
   assert.match(app, /auth\.signUp\(\{[\s\S]*?emailRedirectTo/);
   assert.match(app, /auth\.verifyOtp\(\{ token_hash: tokenHash, type: 'email' \}\)/);
   assert.match(app, /detectSessionInUrl: true/);
