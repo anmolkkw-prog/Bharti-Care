@@ -93,4 +93,6 @@ test('clinic direction links open Google Maps with the clinic as destination', (
     assert.match(html, /maps\/dir\/\?api=1&destination=Dr\.%20Bharati%20Pujari/);
     assert.match(html, />Directions in Google Maps ↗<\/a>/);
   }
+  const home = fs.readFileSync(path.join(root, 'src', 'pages', 'index.html'), 'utf8');
+  assert.doesNotMatch(home, /Also listed on|365Doctor/);
 });
