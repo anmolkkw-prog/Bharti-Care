@@ -4,8 +4,8 @@
   "private": true,
   "description": "Bharti Clinic patient, doctor and administrator portal",
   "scripts": {
-    "build": "node scripts/write-config.js",
-    "build:render": "node scripts/render-build.js",
+    "build": "node scripts/build.js && node scripts/write-config.js",
+    "build:render": "npm run build",
     "start": "npm run build && node scripts/serve.js",
     "test": "node --test"
   },

@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 
 test('each portal page loads shared Supabase configuration and clinic logic', () => {
   for (const file of ['index.html', 'patient.html', 'doctor.html', 'admin.html']) {
-    const html = fs.readFileSync(path.join(root, file), 'utf8');
+    const html = fs.readFileSync(path.join(root, 'src', 'pages', file), 'utf8');
     assert.match(html, /\/config\.js/); assert.match(html, /\/logic\.js/); assert.match(html, /\/app\.js/);
   }
 });
@@ -19,7 +19,10 @@ test('security and booking capacity are implemented in the database schema', () 
 });
 
 test('service role key is not included in browser assets', () => {
-  for (const file of ['index.html', 'patient.html', 'doctor.html', 'admin.html', 'app.js', 'config.js', 'logic.js']) {
-    const source = fs.readFileSync(path.join(root, file), 'utf8'); assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);
+  for (const file of ['index.html', 'patient.html', 'doctor.html', 'admin.html']) {
+    const source = fs.readFileSync(path.join(root, 'src', 'pages', file), 'utf8'); assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);
+  }
+  for (const file of ['app.js', 'logic.js']) {
+    const source = fs.readFileSync(path.join(root, 'src', 'assets', 'js', file), 'utf8'); assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);
   }
 });

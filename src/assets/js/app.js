@@ -85,14 +85,20 @@
     }
     let mode = 'login';
     const role = $('#role'), signup = $('#signup-fields'), form = $('#auth-form'), email = $('#email'), password = $('#password');
+    const credentials = $('#credentials-fields'), verification = $('#verification-fields');
+    let verificationEmail = '';
     const setMode = next => {
       mode = next;
+      verificationEmail = '';
+      credentials.classList.remove('hidden'); verification.classList.add('hidden');
+      $('#signup-otp').value = '';
       $$('.auth-tab').forEach(t => t.classList.toggle('active', t.dataset.authTab === mode));
       signup.classList.toggle('hidden', mode !== 'signup');
       role.disabled = mode === 'signup'; if (mode === 'signup') role.value = 'patient';
       password.autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
       $('#auth-submit').innerHTML = mode === 'signup' ? 'Create your account <span>↗</span>' : 'Sign in <span>↗</span>';
       message($('#auth-message'), '');
+      message($('#auth-message-otp'), '');
     };
     $$('.auth-tab').forEach(t => t.addEventListener('click', () => setMode(t.dataset.authTab)));
     $('#forgot-password').addEventListener('click', async () => {
@@ -110,6 +116,21 @@
     form.addEventListener('submit', async event => {
       event.preventDefault();
       if (!client) return message($('#auth-message'), 'Add your Supabase URL and anon key in .env, then run npm run build.');
+      if (verificationEmail) {
+        const verifyButton = $('#verify-otp');
+        const token = $('#signup-otp').value.trim();
+        if (!/^\d{6}$/.test(token)) return message($('#auth-message-otp'), 'Enter the 6-digit code from your email.');
+        verifyButton.disabled = true; message($('#auth-message-otp'), 'Verifying your email…');
+        try {
+          const { data, error } = await client.auth.verifyOtp({ email: verificationEmail, token, type: 'signup' });
+          if (error) throw error;
+          if (!data.session) throw new Error('Email verification did not create a session. Please sign in.');
+          message($('#auth-message-otp'), 'Email verified. Opening your patient portal…', true);
+          setTimeout(() => location.replace('/patient.html'), 600);
+        } catch (error) { message($('#auth-message-otp'), errorText(error)); }
+        finally { verifyButton.disabled = false; }
+        return;
+      }
       const emailValue = email.value.trim().toLowerCase(), passwordValue = password.value;
       const submit = $('#auth-submit'); submit.disabled = true; message($('#auth-message'), '');
       try {
@@ -124,9 +145,16 @@
           if (passwordValue.length < 8) throw new Error('Password must be at least 8 characters.');
           const result = await client.auth.signUp({ email: emailValue, password: passwordValue, options: { data: { full_name: name, phone: phone || null, height_cm: height ? Number(height) : null, weight_kg: weight ? Number(weight) : null } } });
           data = result.data; if (result.error) throw result.error;
-          if (!data.session) { message($('#auth-message'), 'Check your email to confirm your account, then sign in.', true); form.reset(); return; }
-          message($('#auth-message'), 'Account created. Opening your patient portal…', true);
-          setTimeout(() => location.replace('/patient.html'), 600); return;
+          if (data.session) {
+            await client.auth.signOut();
+            throw new Error('Email OTP verification is disabled for this Supabase project. Turn on Email → Confirm email in Supabase Auth settings, then try again.');
+          }
+          verificationEmail = emailValue;
+          $('#verification-email').textContent = emailValue;
+          credentials.classList.add('hidden'); verification.classList.remove('hidden');
+          password.value = '';
+          message($('#auth-message-otp'), 'A verification code was sent. Check your inbox and spam folder.', true);
+          $('#signup-otp').focus(); return;
         }
         const result = await client.auth.signInWithPassword({ email: emailValue, password: passwordValue });
         data = result.data; if (result.error) throw result.error;
@@ -141,6 +169,22 @@
         location.replace(`/${target}.html`);
       } catch (err) { message($('#auth-message'), errorText(err)); }
       finally { submit.disabled = false; }
+    });
+    $('#resend-otp').addEventListener('click', async () => {
+      if (!verificationEmail) return;
+      const button = $('#resend-otp'); button.disabled = true;
+      message($('#auth-message-otp'), 'Sending a new code…');
+      try {
+        const { error } = await client.auth.resend({ type: 'signup', email: verificationEmail });
+        if (error) throw error;
+        message($('#auth-message-otp'), 'A new verification code was sent. Check your inbox and spam folder.', true);
+      } catch (error) { message($('#auth-message-otp'), errorText(error)); }
+      finally { button.disabled = false; }
+    });
+    $('#cancel-verification').addEventListener('click', () => {
+      verificationEmail = '';
+      verification.classList.add('hidden'); credentials.classList.remove('hidden');
+      email.focus(); message($('#auth-message-otp'), '');
     });
     role.addEventListener('change', () => { if (role.value !== 'patient' && mode === 'signup') setMode('login'); });
   }

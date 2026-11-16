@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const logic = require('../logic.js');
+const logic = require('../src/assets/js/logic.js');
 
 test('name validation accepts ordinary names and Unicode names', () => {
   for (const name of ['Bharti Sharma', 'Li', "O'Neil", 'Anne-Marie', 'डॉ. भारती', 'José Álvarez']) assert.equal(logic.isValidName(name), true, name);
