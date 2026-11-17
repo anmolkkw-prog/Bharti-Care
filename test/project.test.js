@@ -11,6 +11,19 @@ test('each portal page loads shared Supabase configuration and clinic logic', ()
   }
 });
 
+test('homepage prioritizes clinic contact, hours, care details, and accessible navigation', () => {
+  const html = fs.readFileSync(path.join(root, 'src', 'pages', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(root, 'src', 'assets', 'css', 'styles.css'), 'utf8');
+  assert.match(html, /href="tel:\+918296746673">Call the clinic/);
+  assert.match(html, /Directions to the clinic/);
+  assert.match(html, /Request an appointment/);
+  assert.match(html, /CLINIC HOURS[\s\S]*?Monday–Friday/);
+  assert.match(html, /A CLEARER WAY TO GET CARE/);
+  assert.match(html, /Skip to main content/);
+  assert.match(css, /\.landing a:focus-visible/);
+  assert.match(css, /\.home-highlight-grid/);
+});
+
 test('security and booking capacity are implemented in the database schema', () => {
   const sql = fs.readFileSync(path.join(root, 'supabase/schema.sql'), 'utf8');
   assert.match(sql, /enable row level security/); assert.match(sql, /create function public\.book_appointment/);
