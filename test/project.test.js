@@ -60,6 +60,13 @@ test('appointment booking records payment preference and exposes a clearly marke
   assert.match(migration, /payment_method in \('clinic','upi_demo'\)/);
 });
 
+test('patient booking explains when deployed Supabase appointment migrations are missing', () => {
+  const app = fs.readFileSync(path.join(root, 'src', 'assets', 'js', 'app.js'), 'utf8');
+  assert.match(app, /error\?\.code === 'PGRST202'/);
+  assert.match(app, /Run the appointment migrations in order from supabase\/migrations/);
+  assert.match(app, /message\(\$\('#appointment-request-message'\), appointmentErrorText\(error\)\)/);
+});
+
 test('service role key is not included in browser assets', () => {
   for (const file of ['index.html', 'patient.html', 'doctor.html', 'admin.html']) {
     const source = fs.readFileSync(path.join(root, 'src', 'pages', file), 'utf8'); assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);

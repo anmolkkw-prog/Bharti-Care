@@ -13,6 +13,13 @@
   const message = (el, text, success = false) => { if (!el) return; el.textContent = text || ''; el.classList.toggle('success', success); };
   const toast = (text, error = false) => { const el = $('#toast'); if (!el) return; el.textContent = text; el.classList.toggle('error', error); el.classList.add('show'); clearTimeout(toast.timer); toast.timer = setTimeout(() => el.classList.remove('show'), 3600); };
   const errorText = error => error?.message || 'Something went wrong. Please try again.';
+  const appointmentErrorText = error => {
+    const detail = errorText(error);
+    if (error?.code === 'PGRST202' || error?.code === '42883' || /could not find the function public\.(book_appointment|available_appointment_slots)|function public\.(book_appointment|available_appointment_slots).*does not exist|payment_method.*does not exist/i.test(detail)) {
+      return 'Appointment booking needs a Supabase database update. Run the appointment migrations in order from supabase/migrations, then try again.';
+    }
+    return detail;
+  };
   const supabaseSetupMessage = () => {
     if (!sb) return 'The Supabase client library did not load. Check the connection to cdn.jsdelivr.net and reload the page.';
     if (!cfg.url || !cfg.anonKey || cfg.url.includes('your-project') || cfg.anonKey.includes('your-anon-key')) {
@@ -270,7 +277,7 @@
         $('#request-time').disabled = true;
         await loadPatientAppointments();
       } catch (error) {
-        message($('#appointment-request-message'), errorText(error));
+        message($('#appointment-request-message'), appointmentErrorText(error));
         await loadAvailableSlots();
       } finally { submit.disabled = false; }
     });
@@ -300,7 +307,7 @@
     const { data, error } = await client.rpc('available_appointment_slots', { p_date: date });
     if (error) {
       select.innerHTML = '<option value="">Could not load times</option>';
-      return message($('#appointment-request-message'), errorText(error));
+      return message($('#appointment-request-message'), appointmentErrorText(error));
     }
     const slots = (data || []).filter(slot => Number(slot.remaining) > 0);
     select.innerHTML = slots.length
